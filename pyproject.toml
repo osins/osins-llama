@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llama-cli"
+version = "0.1.0"
+description = "A CLI tool for managing and running LLM models with llama_cpp"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["llm", "cli", "llama", "llama-cpp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "llama-cpp-python>=0.2.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=0.950",
+    "pre-commit>=2.20.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+llama = "llama.main:cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["llama", "llama.api", "llama.config", "llama.core", "llama.core.commands", "llama.models", "llama.services", "llama.utils"]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/llama"
+Repository = "https://github.com/yourusername/llama"
+Documentation = "https://github.com/yourusername/llama#readme"
