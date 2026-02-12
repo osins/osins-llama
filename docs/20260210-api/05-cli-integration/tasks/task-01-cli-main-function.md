@@ -4,6 +4,98 @@
 
 CLI主入口函数是CLI应用的起点，负责初始化命令行界面并注册所有可用命令。
 
+## 目录结构
+
+```
+osins-llama/
+├── docs/
+│   └── 20260210-api/
+│       └── 05-cli-integration/
+│           └── tasks/
+│               └── task-01-cli-main-function.md
+├── src/
+│   └── llama/
+│       ├── __init__.py
+│       ├── main.py
+│       ├── cli/
+│       │   ├── __init__.py
+│       │   ├── main.py
+│       │   ├── start.py
+│       │   ├── stop.py
+│       │   ├── restart.py
+│       │   ├── status.py
+│       │   ├── config.py
+│       │   ├── logs.py
+│       │   └── health.py
+│       ├── api/
+│       │   ├── __init__.py
+│       │   ├── server.py
+│       │   └── routes/
+│       │       ├── __init__.py
+│       │       ├── chat_routes.py
+│       │       └── completion_routes.py
+│       ├── config/
+│       ├── core/
+│       ├── exceptions/
+│       ├── middlewares/
+│       ├── models/
+│       ├── services/
+│       └── utils/
+│           ├── __init__.py
+│           ├── logger.py
+│           ├── token_utils.py
+│           ├── exceptions.py
+│           ├── cli_tools.py          # CLI 工具函数
+│           ├── path_utils.py         # 路径处理工具
+│           ├── config_utils.py       # 配置处理工具
+│           ├── logging_utils.py      # 日志相关工具
+│           ├── config_validator.py   # 配置校验工具
+│           └── security_utils.py     # 安全相关工具
+├── tests/
+│   ├── __init__.py
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   ├── test_main.py
+│   │   ├── test_start.py
+│   │   ├── test_stop.py
+│   │   ├── test_restart.py
+│   │   ├── test_status.py
+│   │   ├── test_config.py
+│   │   ├── test_logs.py
+│   │   └── test_health.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── test_chat_routes.py
+│   │   └── test_completion_routes.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── test_*services.py
+│   └── core/
+│       ├── __init__.py
+│       └── test_*core.py
+├── pyproject.toml
+├── requirements.txt
+├── requirements-dev.txt
+├── setup.py
+├── setup.cfg
+├── mypy.ini
+├── .flake8
+├── .gitignore
+├── README.md
+├── LICENSE
+├── CONTRIBUTING.md
+├── QWEN.md
+├── agents.md
+├── MODELS_IMPLEMENTATION_SUMMARY.md
+├── SERVER_IMPLEMENTATION_SUMMARY.md
+├── server_info.json
+├── security_audit.py
+├── validate_implementation.py
+├── validate_models.py
+├── validate_refactor.py
+└── VERSION
+```
+
 ## 实现要求
 
 1. 使用Click库创建CLI应用
