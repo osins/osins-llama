@@ -1,8 +1,8 @@
 import click
-from llama.core.commands.start import start_command
-from llama.core.commands.restart import restart_command
-from llama.core.commands.down import down_command
-from llama.core.commands.status import status_command
+from llama.core.commands.start import start
+from llama.core.commands.restart import restart
+from llama.core.commands.down import down
+from llama.core.commands.status import status
 
 
 @click.group()
@@ -12,10 +12,10 @@ def cli():
 
 
 # 添加各个子命令
-cli.add_command(start_command)
-cli.add_command(restart_command)
-cli.add_command(down_command)
-cli.add_command(status_command)
+cli.add_command(start)
+cli.add_command(restart)
+cli.add_command(down)
+cli.add_command(status)
 
 
 if __name__ == "__main__":

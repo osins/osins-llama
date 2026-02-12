@@ -26,26 +26,29 @@ classifiers = [
 ]
 
 dependencies = [
-    "llama-cpp-python>=0.2.0",
-    "click>=8.0.0",
+    "llama-cpp-python>=0.3.16",
+    "click~=8.1.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "black>=22.0.0",
-    "flake8>=4.0.0",
-    "mypy>=0.950",
-    "pre-commit>=2.20.0",
-    "pytest-cov>=4.0.0",
+    "pytest~=7.4.0",
+    "black~=23.10.0",
+    "flake8~=6.0.0",
+    "mypy~=1.7.0",
+    "pre-commit~=3.5.0",
+    "pytest-cov~=4.1.0",
 ]
 
 [project.scripts]
 llama = "llama.main:cli"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["llama", "llama.api", "llama.config", "llama.core", "llama.core.commands", "llama.models", "llama.services", "llama.utils"]
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["llama*"]
+exclude = ["tests*", "docs*", "scripts*"]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/llama"

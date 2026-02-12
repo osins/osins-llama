@@ -145,6 +145,17 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Cache directories
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
 # pytype static type analyzer
 .pytype/
 

@@ -1,0 +1,1 @@
+qwen --prompt $args[0]
