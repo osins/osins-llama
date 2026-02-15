@@ -1,10 +1,9 @@
-"""Status command for osins-llama server."""
 import click
-import requests  # type: ignore
-import logging
 from pathlib import Path
-
-from .process import ProcessManager
+import os
+import requests
+import logging
+import psutil  # 用于跨平台进程状态检测
 
 
 def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
@@ -49,16 +48,8 @@ def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
             logger.error(f"Invalid PID content in file: {pid_file}")
             return 4
 
-        process_manager = ProcessManager(
-            pid_file=pid_file,
-            expected_cmd_keyword="llama.server",
-            stop_timeout=30
-        )
-
-        # Check if process is running
-        is_running = process_manager.is_running()
-
-        if not is_running:
+        # 检查进程是否存在
+        if not psutil.pid_exists(pid):
             logger.warning(f"PID file exists but process {pid} not running")
             return 2
         logger.info(f"Process {pid} is running")
@@ -82,13 +73,10 @@ def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
 
 
 @click.command()
-@click.option(
-    '--pid-file', default='./llama.pid', type=click.Path(),
-    help='PID file path'
-)
+@click.option('--pid-file', default='./llama.pid', type=click.Path(), help='PID file path')
 @click.option('--api-url', default='http://localhost:31301', help='API endpoint URL')
 @click.option('--debug/--no-debug', default=False, help='Debug mode')
-def status(pid_file: str, api_url: str, debug: bool) -> None:
+def status(pid_file: str, api_url: str, debug: bool):
     """Check the server running status."""
     # Convert string path to Path object
     pid_file_obj = Path(pid_file)
@@ -99,6 +87,10 @@ def status(pid_file: str, api_url: str, debug: bool) -> None:
         api_url=api_url,
         debug=debug
     )
-
+    
     # Exit with appropriate code
     raise SystemExit(result_code)
+
+
+if __name__ == '__main__':
+    status()

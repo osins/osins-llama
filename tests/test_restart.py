@@ -8,7 +8,7 @@ from click.testing import CliRunner
 import json
 import os
 from unittest.mock import patch, MagicMock
-from llama.core.commands.restart import restart_command
+from llama.core.commands.restart import restart
 
 
 @pytest.fixture

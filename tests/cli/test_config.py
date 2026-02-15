@@ -1,175 +1,11 @@
-# config命令函数实现
-
-## 概述
-
-config命令用于管理服务器配置，包括显示、设置和重置配置项。实现应具备安全性和异常处理能力。
-
-## 实现要求
-
-1. 实现config命令的Click装饰器
-2. 定义子命令（show, set, reset）
-3. 验证参数的有效性
-4. 调用配置管理逻辑
-5. 处理配置操作过程中的异常
-6. 添加适当的日志记录功能
-7. 实现安全的配置文件操作
-
-## 代码实现
-
-```python
-import json
-import logging
-from pathlib import Path
-import click
-from typing import Optional
-
-
-CONFIG_FILE = Path("./llama_config.json")
-logger = logging.getLogger("config")
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
-logger.propagate = False
-
-
-def load_config(config_path: Path = None) -> dict:
-    """加载配置文件，如果不存在则返回空字典"""
-    config_file = config_path or CONFIG_FILE
-    try:
-        if config_file.exists():
-            with config_file.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        else:
-            return {}
-    except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        return {}
-
-
-def save_config(config: dict, config_path: Path = None):
-    """使用临时文件保存配置，避免写入中断导致配置文件损坏"""
-    config_file = config_path or CONFIG_FILE
-    
-    # 进行路径安全校验，防止路径遍历攻击
-    if '..' in str(config_file) or config_file.is_absolute() and not str(config_file).startswith(str(Path.cwd())):
-        raise ValueError("Invalid config file path")
-    
-    try:
-        # 创建临时文件
-        temp_file = config_file.with_suffix(config_file.suffix + '.tmp')
-        
-        # 写入临时文件
-        with temp_file.open("w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
-        
-        # 原子性地替换原文件
-        temp_file.replace(config_file)
-    except Exception as e:
-        logger.error(f"Failed to save config: {e}")
-        # 如果临时文件存在，清理它
-        if temp_file.exists():
-            temp_file.unlink()
-        raise
-
-
-@click.group()
-def config():
-    """Manage server configuration."""
-    pass
-
-
-@config.command()
-@click.option('-f', '--config-file', type=click.Path(), default="./llama_config.json",
-              help="Path to the configuration file")
-def show(config_file: str):
-    """Show current configuration."""
-    execute_show(Path(config_file))
-
-
-def execute_show(config_path: Path):
-    """显示当前配置"""
-    config = load_config(config_path)
-    if not config:
-        logger.info("Configuration is empty")
-    else:
-        for key, value in config.items():
-            print(f"{key} = {value}")
-
-
-@config.command()
-@click.argument('key')
-@click.argument('value')
-@click.option('-f', '--config-file', type=click.Path(), default="./llama_config.json",
-              help="Path to the configuration file")
-def set(key: str, value: str, config_file: str):
-    """Set configuration item."""
-    execute_set(key, value, Path(config_file))
-
-
-def execute_set(key: str, value: str, config_path: Path):
-    """设置配置项"""
-    if not key or any(c in key for c in " \t\n\r/\\"):
-        logger.error(f"Invalid config key: {key}")
-        raise ValueError("Invalid config key")
-    config = load_config(config_path)
-    config[key] = value
-    save_config(config, config_path)
-    logger.info(f"Set configuration: {key} = {value}")
-
-
-@config.command()
-@click.option('-f', '--config-file', type=click.Path(), default="./llama_config.json",
-              help="Path to the configuration file")
-def reset(config_file: str):
-    """Reset configuration."""
-    execute_reset(Path(config_file))
-
-
-def execute_reset(config_path: Path):
-    """重置配置"""
-    if config_path.exists():
-        try:
-            config_path.unlink()
-            logger.info("Configuration reset successfully")
-        except Exception as e:
-            logger.error(f"Failed to reset configuration: {e}")
-            raise
-    else:
-        logger.info("Configuration file does not exist, nothing to reset")
-```
-
-## 验证标准
-
-- [x] 命令装饰器正确应用
-- [x] 子命令定义完整(show, set, reset)
-- [x] 参数选项定义完整
-- [x] 参数类型验证正确
-- [x] 帮助文本清晰准确
-- [x] 代码符合PEP 8规范
-- [x] 类型注解完整
-- [x] 包含安全的配置键值验证
-- [x] 实现了异常处理机制
-- [x] 包含日志记录功能
-- [x] 配置文件操作安全可靠
-- [x] 支持自定义配置文件路径
-- [x] 配置文件路径经过安全校验
-- [x] 使用临时文件实现原子性保存
-- [x] 提供完整的单元测试覆盖
-
-## 单元测试
-
-以下是针对配置命令功能的单元测试，涵盖各种场景：
-
-```python
+"""Tests for the CLI config commands."""
 import unittest
 import tempfile
 import os
 from pathlib import Path
 import json
 from unittest.mock import patch, mock_open
+from src.llama.cli.config import load_config, save_config, execute_show, execute_set, execute_reset
 
 
 class TestConfigCommands(unittest.TestCase):
@@ -278,7 +114,15 @@ class TestConfigCommands(unittest.TestCase):
         
         # 捕获日志输出
         with patch('logging.Logger.info') as mock_logger_info:
+            captured_output = io.StringIO()
+            sys.stdout = captured_output
+            
             execute_show(self.config_path)
+            
+            sys.stdout = sys.__stdout__
+            
+            # 验证输出包含"Configuration is empty"
+            self.assertIn("Configuration is empty", captured_output.getvalue())
             
             # 验证记录了"Configuration is empty"
             mock_logger_info.assert_called_with("Configuration is empty")
@@ -305,8 +149,19 @@ class TestConfigCommands(unittest.TestCase):
         self.assertFalse(self.config_path.exists())
         
         # 捕获日志输出
+        from unittest.mock import patch
         with patch('logging.Logger.info') as mock_logger_info:
+            import io
+            import sys
+            captured_output = io.StringIO()
+            sys.stdout = captured_output
+            
             execute_reset(self.config_path)
+            
+            sys.stdout = sys.__stdout__
+            
+            # 验证输出包含"Configuration file does not exist, nothing to reset"
+            self.assertIn("Configuration file does not exist, nothing to reset", captured_output.getvalue())
             
             # 验证记录了"Configuration file does not exist, nothing to reset"
             mock_logger_info.assert_called_with("Configuration file does not exist, nothing to reset")
@@ -352,18 +207,3 @@ class TestConfigCommands(unittest.TestCase):
             final_config = json.load(f)
         
         self.assertEqual(final_config, override_config)
-```
-
-## 安全考虑
-
-- 验证配置键值的安全性，防止包含特殊字符如空格、换行符、路径分隔符等
-- 防止配置注入攻击，通过限制键名字符集
-- 验证配置文件路径安全性，防止路径遍历攻击
-- 使用安全的文件操作方法，防止并发访问问题
-- 在保存配置时使用UTF-8编码，确保国际化支持
-- 使用临时文件进行原子性保存，避免写入中断导致配置文件损坏
-
-## 版本信息
-- 版本: 3.0
-- 创建日期: 2026-02-12
-- 最后更新: 2026-02-14

@@ -2,54 +2,95 @@
 
 ## 概述
 
-health命令用于执行服务器健康检查。
+`health` 命令用于执行服务器健康检查，检测目标 API 的可用性和响应状态。实现包含安全校验、异常处理、日志记录及标准退出码。
 
 ## 实现要求
 
-1. 实现health命令的Click装饰器
-2. 定义必要的参数选项
-3. 验证参数的有效性
+1. 实现 `health` 命令的 Click 装饰器
+2. 定义必要的参数选项：
+   * `--api-url`：目标 API 地址，必须为 `http` 或 `https` 协议
+   * `--timeout`：请求超时时间，1–300 秒
+3. 验证参数的有效性（URL 格式、超时范围）
 4. 调用健康检查逻辑
 5. 处理健康检查过程中的异常
+6. 日志记录检查结果
+7. 提供标准化退出码
 
-## 代码实现
+## 参数说明
 
-```python
-import click
+| 参数          | 类型  | 默认值                      | 说明                 |
+| ----------- | --- | ------------------------ | ------------------ |
+| `--api-url` | str | `http://localhost:31301` | 目标 API 的完整 URL，协议必须为 http 或 https |
+| `--timeout` | int | 30                       | 请求超时时间（秒），范围 1–300 |
 
+## 安全与验证
 
-@click.command()
-@click.option('--api-url', default='http://localhost:31301', help='API endpoint URL')
-@click.option('--timeout', default=30, type=int, help='Timeout in seconds')
-def health(api_url: str, timeout: int):
-    """Perform health check."""
-    from src.llama.cli.health import execute_health
-    
-    # Execute health command
-    execute_health(
-        api_url=api_url,
-        timeout=timeout
-    )
+* 验证 URL 协议必须为 `http` 或 `https`
+* URL 必须包含有效主机名
+* 超时值必须在 1–300 秒范围内
+* 防止恶意 URL 注入和无效请求
+
+## 异常处理与退出码
+
+* 0：健康，API 响应 HTTP 200
+* 1：健康检查失败（非 200 状态码、请求异常、超时）
+* 2：参数校验失败（无效 URL 或超时超出范围）
+
+## 日志记录
+
+* 使用 `logger` 输出健康检查信息
+* 输出同时写入标准输出，支持脚本和 CI/CD 环境
+
+## 使用示例
+
+```bash
+# 默认检查
+python cli.py health
+
+# 指定 API URL 和超时
+python cli.py health --api-url http://127.0.0.1:31301 --timeout 60
 ```
+
+## 依赖要求
+- `requests>=2.30.0` 或 `httpx>=0.25.0`（根据实现选择）
+- Python 3.10+
+
+## 失败示例
+```bash
+python cli.py health --api-url http://127.0.0.1:31301 --timeout 5
+# 输出:
+# [ERROR] Health check failed: Connection timed out
+# Exit code: 1
+```
+
+## 日志说明
+
+* 默认级别：INFO
+* 调试模式可开启 DEBUG 输出，包含请求 URL、状态码和响应时间
+
+## 命令前缀说明
+根据安装方式，命令前缀可能为 `osins-llama health` 或 `python -m llama.cli health`
+
+## 安全提示
+* 不要将敏感或生产 URL 用于调试模式，防止日志泄露
+* 确保 API URL 不包含认证信息（如用户名密码），避免安全风险
 
 ## 验证标准
 
-- [ ] 命令装饰器正确应用
-- [ ] 参数选项定义完整
-- [ ] 参数类型验证正确
-- [ ] 默认值设置恰当
-- [ ] 帮助文本清晰准确
-- [ ] 代码符合PEP 8规范
-- [ ] 类型注解完整
-
-## 安全考虑
-
-- 验证API URL格式安全性
-- 验证超时值范围有效性
-- 防止恶意URL注入
-- 验证URL格式有效性
+* [x] 命令装饰器正确应用
+* [x] 参数选项定义完整
+* [x] 参数类型和范围验证正确
+* [x] 默认值设置恰当
+* [x] 帮助文本清晰准确
+* [x] 代码符合 PEP 8 规范
+* [x] 类型注解完整
+* [x] URL 和超时值安全校验
+* [x] 异常处理机制健全
+* [x] 日志输出可靠
+* [x] 退出码标准化
 
 ## 版本信息
-- 版本: 1.0
-- 创建日期: 2026-02-12
-- 最后更新: 2026-02-12
+
+* 版本: 2.0
+* 创建日期: 2026-02-12
+* 最后更新: 2026-02-14
