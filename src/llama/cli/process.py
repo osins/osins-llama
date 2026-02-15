@@ -6,9 +6,12 @@ from pathlib import Path
 from typing import Optional
 import time
 import sys
+import logging
+import psutil
 from .exceptions import ProcessAlreadyRunning
 from .pid_file_manager import PidFileManager  # 修改导入路径
 from ..models.pid_data import PidData
+from ..utils.pid_tools import wait_for_port, find_pid_by_port, wait_for_pid_by_port
 
 
 class ProcessManager:
@@ -17,24 +20,55 @@ class ProcessManager:
     def __init__(self, expected_cmd_keyword: str, stop_timeout: int = 30):
         self.expected_cmd_keyword = expected_cmd_keyword
         self.stop_timeout = stop_timeout
+        self.logger = logging.getLogger("process")
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
+        
         # 创建 PidFileManager 实例，它会从环境变量获取 PID 文件路径
         self.pid_manager = PidFileManager()
 
-    def start(self):
+    def start(self, pid_data=None):
         """启动服务器进程"""
         # 检查是否已有进程在运行
         if self.is_running():
             raise ProcessAlreadyRunning(f"Server is already running (PID: {self.get_pid()})")
 
         # 从pid_manager获取命令
-        cmd = self.pid_manager.get_cmd()
-        
+        cmd = self.pid_manager.get_cmd(pid_data)
+
         if cmd:
+            # 输出即将执行的命令
+            self.logger.info(f"Starting server with command: {' '.join(cmd)}")
             # 启动新进程
             process = subprocess.Popen(cmd)
+            self.logger.info(f"Started server process with PID: {process.pid}")
 
-            # 使用PID管理器的set_pid方法更新PID
-            self.pid_manager.set_pid(process.pid)
+            # 等待服务器启动并获取实际监听端口的PID
+            if pid_data and pid_data.port:
+                # 等待端口就绪
+                if wait_for_port(pid_data.host or 'localhost', pid_data.port, timeout=30.0):
+                    # 获取实际监听端口的PID
+                    actual_pid = wait_for_pid_by_port(pid_data.port, timeout=10.0)
+                    if actual_pid:
+                        self.logger.info(f"Found actual server process PID: {actual_pid}")
+                        # 更新pid_data中的PID为实际服务器PID
+                        pid_data.pid = actual_pid
+                        self.pid_manager.write(pid_data)
+                    else:
+                        self.logger.warning(f"Could not find actual server PID for port {pid_data.port}, using initial PID: {process.pid}")
+                        # 如果找不到实际PID，使用原始PID
+                        pid_data.pid = process.pid
+                        self.pid_manager.write(pid_data)
+                else:
+                    self.logger.error(f"Server failed to start on port {pid_data.port} within timeout")
+                    raise Exception(f"Server failed to start on port {pid_data.port}")
+            else:
+                # 否则使用PID管理器的set_pid方法更新PID
+                self.pid_manager.set_pid(process.pid)
         else:
             # 如果没有保存的数据，无法启动
             raise Exception("No saved data found in PID file, unable to start")
@@ -42,7 +76,7 @@ class ProcessManager:
     def stop(self):
         """停止服务器进程"""
         # 通过pid_manager获取PID
-        pid_data = self.pid_manager.read()
+        pid_data = self.pid_manager.read(validate=True)
         if not pid_data or not pid_data.pid:
             return False
 
@@ -66,7 +100,7 @@ class ProcessManager:
     def restart(self):
         """重启服务器进程"""
         # 获取保存的启动参数
-        saved_data = self.pid_manager.read()
+        saved_data = self.pid_manager.read(validate=True)
         if not saved_data:
             raise Exception("No saved data found in PID file, unable to restart")
 
@@ -77,7 +111,7 @@ class ProcessManager:
 
     def status(self):
         """检查服务器进程状态"""
-        pid_data = self.pid_manager.read()
+        pid_data = self.pid_manager.read(validate=True)
         if not pid_data or not pid_data.pid:
             return {"running": False, "pid": None}
 

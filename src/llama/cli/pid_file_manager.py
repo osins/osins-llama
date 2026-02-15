@@ -73,9 +73,9 @@ class PidFileManager:
         """安全转义命令参数，防止命令注入"""
         if value is None:
             return ""
-        
-        # 移除控制字符和潜在危险字符
-        clean_value = re.sub(r'[^\w\s\-\._/~:?#\[\]@!$&\'()*+,;=%]', '', value)
+
+        # 移除控制字符和潜在危险字符，保留路径分隔符（包括反斜杠和正斜杠）
+        clean_value = re.sub(r'[^\w\s\-\._/~:?#\[\]@!$&\'()*+,;=%\\]', '', value)
         # 移除可能的命令注入字符
         clean_value = clean_value.replace('"', '').replace("'", '').replace(';', '').replace('|', '').replace('&', '')
         # 移除零宽字符
@@ -167,9 +167,9 @@ class PidFileManager:
 
         # 检查是否有意外的额外字段（除了内部使用的 _hash）
         allowed_fields = set([
-            "pid", "model_path", "host", "port", "n_ctx", "n_threads", 
-            "api_keys", "max_concurrent_requests", "rate_limit_requests", 
-            "rate_limit_window", "debug", "_hash"
+            "pid", "model_path", "host", "port", "n_ctx", "n_threads",
+            "api_keys", "max_concurrent_requests", "rate_limit_requests",
+            "rate_limit_window", "debug", "format_version", "_hash"
         ])
         
         unexpected_fields = set(data.keys()) - allowed_fields
@@ -239,28 +239,28 @@ class PidFileManager:
         # 如果禁用了严格文件系统检查，返回简化标识
         if not self.strict_fs_check:
             return str(self.pid_file_path.parent.resolve())
-        
+
         parent_dir = self.pid_file_path.parent
-        
+
         # 检查是否为符号链接
         if parent_dir.is_symlink():
             raise PidFileError(f"Parent directory is a symbolic link: {parent_dir}")
-        
+
         # 检查 UUID 文件是否存在且未被篡改
         uuid_file = self._create_uuid_file()
         if not uuid_file.exists():
             raise PidFileError(f"UUID file missing: {uuid_file}")
-        
+
         # 读取 UUID 并检查 mtime
         uuid_content = uuid_file.read_text().strip()
         stat_info = uuid_file.stat()
-        
+
         # 在 Windows 上使用路径字符串和时间戳进行比较
         if sys.platform == 'win32':
             return f"{os.path.realpath(parent_dir)}:{stat_info.st_ctime}:{stat_info.st_mtime}:{uuid_content}"
         else:
             # Unix 系统使用 inode + UUID
-            dir_fd = os.open(str(parent_dir), os.O_RDONLY)
+            dir_fd = os.open(str(parent_dir), os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
             try:
                 dir_stat = os.fstat(dir_fd)
                 return f"{dir_stat.st_ino}:{uuid_content}:{stat_info.st_mtime}"
@@ -309,9 +309,15 @@ class PidFileManager:
 
             if self.strict_fs_check:
                 try:
-                    dir_fd = os.open(str(self.pid_file_path.parent), os.O_RDONLY)
-                    os.fsync(dir_fd)
-                    os.close(dir_fd)
+                    # Windows 上跳过目录同步，因为可能不支持或导致错误
+                    if sys.platform != 'win32':
+                        dir_fd = os.open(str(self.pid_file_path.parent), os.O_RDONLY)
+                        os.fsync(dir_fd)
+                        os.close(dir_fd)
+                    else:
+                        # 在 Windows 上，我们可以通过刷新父目录句柄来达到类似效果
+                        # 但在 Python 中，这通常由底层操作系统自动处理
+                        pass
                 except (OSError, AttributeError):
                     # 在某些系统上可能不支持，非致命错误
                     self.logger.warning(f"[WRITE] Failed to fsync parent directory for {self.pid_file_path}")
@@ -335,7 +341,7 @@ class PidFileManager:
     # 读取（修复TOCTOU窗口，移除冗余检查）
     # ==========================================================
 
-    def read(self) -> Optional[PidData]:
+    def read(self, validate: bool = False) -> Optional[PidData]:
         with self._acquire_lock(write=False):
             # 移除冗余 exists() 检查，直接尝试打开文件
             try:
@@ -390,7 +396,7 @@ class PidFileManager:
                 if "api_keys" in content_preview:
                     # 脱敏日志中的敏感信息
                     masked_content = re.sub(r'"api_keys"\s*:\s*"([^"]*)"', f'"api_keys":"{self.mask_sensitive("MASKED", "key")}"', content_preview)
-                self.logger.error(f"[READ] Invalid JSON in PID file {self.pid_file_path}: {str(e)}, content preview: {masked_content}')
+                self.logger.error(f"[READ] Invalid JSON in PID file {self.pid_file_path}: {str(e)}, content preview: {masked_content}")
                 raise PidFileError("PID file is not valid JSON") from e
 
             if not isinstance(data, dict):
@@ -407,9 +413,13 @@ class PidFileManager:
                 if expected_hash != actual_hash:
                     raise PidFileError("PID file hash mismatch - possible tampering")
 
-            self._validate_pid_data(original_data)
+            # 只有在需要时才进行数据验证
+            if validate:
+                self._validate_pid_data(original_data)
 
-            return PidData(**original_data)
+            pid_data = PidData(**original_data)
+            self.logger.info(f"Read PID from file: {pid_data.pid}")
+            return pid_data
 
     # ==========================================================
     # 安全删除（修复双重close和路径级TOCTOU，移除冗余检查）
@@ -435,13 +445,19 @@ class PidFileManager:
                 finally:
                     os.close(fd)
 
-                # 使用目录文件描述符删除文件，避免路径重新解析
-                parent = self.pid_file_path.parent
-                dir_fd = os.open(str(parent), os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.unlink(self.pid_file_path.name, dir_fd=dir_fd)
-                finally:
-                    os.close(dir_fd)
+                # 使用目录文件描述符删除文件，避免路径重新解析（仅在非Windows上）
+                if sys.platform != 'win32':
+                    parent = self.pid_file_path.parent
+                    dir_fd = os.open(str(parent), os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.unlink(self.pid_file_path.name, dir_fd=dir_fd)
+                    finally:
+                        os.close(dir_fd)
+                else:
+                    # Windows 上直接使用 Path.unlink 删除文件
+                    pid_path = Path(self.pid_file_path)
+                    if pid_path.exists():
+                        pid_path.unlink()
             except FileNotFoundError:
                 # 文件不存在，什么都不做
                 return
@@ -489,7 +505,7 @@ class PidFileManager:
 
     def get_pid(self) -> Optional[int]:
         try:
-            pid_data = self.read()
+            pid_data = self.read(validate=True)
             return pid_data.pid if pid_data else None
         except PidFileError as e:
             self.logger.warning(f"[GET_PID] Failed to read PID from {self.pid_file_path}: {str(e)}")
@@ -499,9 +515,10 @@ class PidFileManager:
     # 构造命令
     # ==========================================================
 
-    def get_cmd(self) -> Optional[List[str]]:
+    def get_cmd(self, pid_data=None) -> Optional[List[str]]:
         try:
-            pid_data = self.read()
+            if pid_data is None:
+                pid_data = self.read()
             if not pid_data:
                 return None
 

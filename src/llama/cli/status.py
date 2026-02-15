@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from .process import ProcessManager
+from .pid_file_manager import PidFileManager
 
 
 def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
@@ -36,21 +37,19 @@ def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
     logger.propagate = False
 
     try:
-        # 检查 PID 文件存在性
-        pid_file = pid_file.resolve()
-        if not pid_file.exists():
-            logger.warning(f"PID file not found: {pid_file}")
+        # 使用 PidFileManager 读取 PID 数据
+        pid_manager = PidFileManager()
+        try:
+            pid_data = pid_manager.read(validate=True)
+            if not pid_data or not pid_data.pid:
+                logger.info("Service does not exist")
+                return 1
+            pid = pid_data.pid
+        except Exception:
+            logger.info("Service does not exist")
             return 1
 
-        # 读取 PID
-        try:
-            pid = int(pid_file.read_text().strip())
-        except Exception:
-            logger.error(f"Invalid PID content in file: {pid_file}")
-            return 4
-
         process_manager = ProcessManager(
-            pid_file=pid_file,
             expected_cmd_keyword="llama.server",
             stop_timeout=30
         )
@@ -59,7 +58,8 @@ def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
         is_running = process_manager.is_running()
 
         if not is_running:
-            logger.warning(f"PID file exists but process {pid} not running")
+            logger.warning(f"PID file exists but process {pid} not running, cleaning up PID file")
+            pid_manager.delete()  # 清理无效的 PID 文件
             return 2
         logger.info(f"Process {pid} is running")
 

@@ -399,12 +399,12 @@ def start(
         # Create PidFileManager instance to write PID data directly
         from .pid_file_manager import PidFileManager
         from ..models.pid_data import PidData
-        
+
         pid_manager = PidFileManager()
-        
-        # Prepare PID data
+
+        # Prepare PID data with current process PID
         pid_data = PidData(
-            pid=None,  # Will be set when process starts
+            pid=os.getpid(),  # Use current process PID temporarily
             model_path=str(config.model_path) if config.model_path else None,
             host=config.host,
             port=config.port,
@@ -416,12 +416,9 @@ def start(
             rate_limit_window=rate_limit_window,
             debug=debug
         )
-        
-        # Write PID data to file before starting the process
-        pid_manager.write(pid_data)
 
-        # Start the server - process_manager.start() will create the PID file
-        process_manager.start()
+        # Start the server - process_manager.start() will create the PID file with the provided data
+        process_manager.start(pid_data)
 
         click.echo(f"Server started successfully on {config.host}: {config.port}")
 
