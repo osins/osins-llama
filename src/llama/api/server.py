@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 import uvicorn
 import logging
 import sys
+import argparse
+from typing import Optional
 
 from src.llama.api.completion_routes import router as completion_router
 from src.llama.api.chat_routes import router as chat_router
@@ -97,9 +99,67 @@ def start_server(config: Config):
     )
 
 
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="Start the Llama API server")
+    parser.add_argument("--host", type=str, default=None, help="Server host address")
+    parser.add_argument("--port", type=int, default=None, help="Server port")
+    parser.add_argument("--model-path", type=str, default=None, help="Path to model file")
+    parser.add_argument("--n-ctx", type=int, default=None, help="Context length")
+    parser.add_argument("--n-threads", type=int, default=None, help="Number of threads")
+    parser.add_argument("--api-keys", type=str, default=None, help="API key list (comma separated)")
+    parser.add_argument("--max-concurrent-requests", type=int, default=None, help="Max concurrent requests")
+    parser.add_argument("--rate-limit-requests", type=int, default=None, help="Rate limit requests per window")
+    parser.add_argument("--rate-limit-window", type=int, default=None, help="Rate limit window in seconds")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    
+    return parser.parse_args()
+
+
+def merge_config_with_args(config: Config, args) -> Config:
+    """Merge configuration with command line arguments"""
+    # Override service config with command line args if provided
+    if args.host is not None:
+        config.service.host = args.host
+    if args.port is not None:
+        config.service.port = args.port
+    if args.debug:
+        config.service.debug = args.debug
+        
+    # Override model config with command line args if provided
+    if args.model_path is not None:
+        config.model.path = args.model_path
+    if args.n_ctx is not None:
+        config.model.n_ctx = args.n_ctx
+    if args.n_threads is not None:
+        config.model.n_threads = args.n_threads
+        
+    # Override security config with command line args if provided
+    if args.api_keys is not None:
+        api_keys_list = [key.strip() for key in args.api_keys.split(",") if key.strip()]
+        config.security.api_keys = api_keys_list
+    if args.max_concurrent_requests is not None:
+        config.security.max_concurrent_requests = args.max_concurrent_requests
+    if args.rate_limit_requests is not None:
+        config.security.rate_limit_requests = args.rate_limit_requests
+    if args.rate_limit_window is not None:
+        config.security.rate_limit_window = args.rate_limit_window
+        
+    return config
+
+
 if __name__ == "__main__":
     try:
-        config = Config.from_env()
+        args = parse_args()
+        
+        # Load the initial config from environment variables
+        # If model path is provided via command line, pass it to from_env to bypass validation temporarily
+        model_path = args.model_path if args.model_path else None
+        config = Config.from_env(model_path=model_path)
+        
+        # Override with command line arguments if provided
+        config = merge_config_with_args(config, args)
+        
         start_server(config)
     except ValueError as e:
         print(f"Configuration error: {e}")

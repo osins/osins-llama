@@ -19,11 +19,21 @@ class Config(BaseModel):
     service: ServiceConfig
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls, model_path=None):
         import os
 
-        # 从环境变量获取模型路径
-        model_path = os.getenv("LLAMA_MODEL_PATH", "")
+        # 从环境变量获取模型路径，但如果提供了参数，则使用参数值
+        if model_path is None:
+            model_path = os.getenv("LLAMA_MODEL_PATH", "")
+            if not model_path or model_path.strip() == "":
+                # 如果没有提供模型路径参数且环境变量也没有设置，则暂时不抛出错误
+                # 让后续的命令行参数有机会覆盖
+                model_path = ""
+        else:
+            # 如果提供了model_path参数，则使用它
+            pass
+
+        # 只有在最终没有提供模型路径时才抛出错误
         if not model_path or model_path.strip() == "":
             raise ValueError("Model path not provided. Please set LLAMA_MODEL_PATH environment variable.")
 
@@ -36,11 +46,11 @@ class Config(BaseModel):
         api_keys = []
         if api_keys_raw:
             api_keys = [key.strip() for key in api_keys_raw.split(",") if key.strip()]
-        
+
         # 如果没有设置API密钥，记录警告但不使用默认密钥（生产环境安全要求）
         if not api_keys:
             logger.warning("No API keys configured. This is insecure for production use.")
-        
+
         return cls(
             model=ModelConfig(
                 path=model_path,
