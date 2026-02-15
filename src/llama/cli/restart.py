@@ -41,7 +41,6 @@ def restart(
     """Restart the osins-llama server."""
     try:
         process_manager = ProcessManager(
-            pid_file=Path(pid_file),
             expected_cmd_keyword="llama.server",
             stop_timeout=30
         )
@@ -67,12 +66,12 @@ def restart(
         if debug:
             cmd.append("--debug")
         
-        process_manager.restart(cmd)
-        
+        process_manager.restart()
+
         # Wait for the server to restart
         click.echo(f"Waiting {wait} seconds for server to restart...")
         time.sleep(wait)
-        
+
         click.echo("Server restarted successfully.")
         
     except ProcessError as e:

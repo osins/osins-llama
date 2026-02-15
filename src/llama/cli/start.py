@@ -390,36 +390,38 @@ def start(
         config_manager = ConfigManager(config_path)
         config = config_manager.load(cli_overrides=cli_overrides)
 
-        # Construct the command to start the server
-        cmd = [
-            sys.executable, "-m", "src.llama.api.server",
-            "--host", config.host,
-            "--port", str(config.port),
-            "--n-ctx", str(n_ctx),
-            "--n-threads", str(n_threads),
-            "--max-concurrent-requests", str(max_concurrent_requests),
-            "--rate-limit-requests", str(rate_limit_requests),
-            "--rate-limit-window", str(rate_limit_window)
-        ]
-
-        if config.model_path:
-            cmd.extend(["--model-path", str(config.model_path)])
-
-        if api_keys:
-            cmd.extend(["--api-keys", ",".join(api_keys)])
-
-        if debug:
-            cmd.append("--debug")
-
         # Initialize process manager
         process_manager = ProcessManager(
-            pid_file=pid_file_obj,
             expected_cmd_keyword="llama.api.server",
             stop_timeout=30
         )
 
+        # Create PidFileManager instance to write PID data directly
+        from .pid_file_manager import PidFileManager
+        from ..models.pid_data import PidData
+        
+        pid_manager = PidFileManager()
+        
+        # Prepare PID data
+        pid_data = PidData(
+            pid=None,  # Will be set when process starts
+            model_path=str(config.model_path) if config.model_path else None,
+            host=config.host,
+            port=config.port,
+            n_ctx=n_ctx,
+            n_threads=n_threads,
+            api_keys=','.join(api_keys) if api_keys else None,
+            max_concurrent_requests=max_concurrent_requests,
+            rate_limit_requests=rate_limit_requests,
+            rate_limit_window=rate_limit_window,
+            debug=debug
+        )
+        
+        # Write PID data to file before starting the process
+        pid_manager.write(pid_data)
+
         # Start the server - process_manager.start() will create the PID file
-        process_manager.start(cmd)
+        process_manager.start()
 
         click.echo(f"Server started successfully on {config.host}: {config.port}")
 
