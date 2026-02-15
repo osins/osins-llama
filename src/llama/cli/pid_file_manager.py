@@ -524,7 +524,10 @@ class PidFileManager:
 
             def quote_arg(arg: str) -> str:
                 safe_arg = self.safe_shell_arg(arg)
-                # 总是加引号保证参数完整性
+                if sys.platform == "win32":
+                    # Windows上不加引号以避免路径问题
+                    return safe_arg
+                # 其他平台上加引号保证参数完整性
                 return f'"{safe_arg}"'
 
             cmd = [
@@ -548,7 +551,9 @@ class PidFileManager:
                     cmd.extend([flag, str(value)])
 
             if pid_data.model_path:
-                cmd.extend(["--model-path", quote_arg(pid_data.model_path)])
+                # 移除model_path开头和结尾的引号
+                cleaned_model_path = re.sub(r'^["\']+|["\']+$', '', pid_data.model_path)
+                cmd.extend(["--model-path", quote_arg(cleaned_model_path)])
             if pid_data.api_keys:
                 cmd.extend(["--api-keys", quote_arg(pid_data.api_keys)])
             if pid_data.debug:
