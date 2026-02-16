@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import sys
 import argparse
@@ -19,6 +20,7 @@ from src.llama.exceptions.service_error import ServiceError
 from src.llama.middlewares.rate_limit_middleware import RateLimitMiddleware
 from src.llama.middlewares.api_key_middleware import ApiKeyMiddleware
 from src.llama.middlewares.logging_middleware import LoggingMiddleware
+from src.llama.core.logger_manager import logger
 
 
 def create_app(config: Config):
@@ -86,6 +88,15 @@ def create_app(config: Config):
                     "message": exc.message
                 }
             }
+        )
+
+    # Global exception handler for validation errors
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        logger.error(f"VALIDATION_ERROR - URL: {request.url} | ClientIP: {request.client.host if request.client else 'unknown'} | Errors: {exc.errors()}")
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors()}
         )
 
     return app
