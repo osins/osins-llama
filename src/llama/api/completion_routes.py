@@ -159,7 +159,42 @@ async def create_completion(
     """
     处理文本生成请求
     """
-    return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
+    logger.info(f"Route handler reached for /v1/completions, model: {request.model}")
+    if request.stream:
+        # 对于流式请求，使用不同的处理方式
+        async def generate_stream() -> AsyncGenerator[str, None]:
+            try:
+                async for chunk in service.generate_stream(request):
+                    yield f"data: {chunk.model_dump_json()}\n\n"
+
+                yield "data: [DONE]\n\n"
+            except asyncio.CancelledError:
+                logger.info(f"Stream cancelled for request {request.model}")
+                raise
+            except Exception as e:
+                logger.error(f"Stream generation error: {str(e)}")
+                from src.llama.models.common.stream_chunk import StreamChunk
+                error_chunk = StreamChunk(
+                    id=f"error-{int(time.time())}",
+                    object="text_completion.chunk",
+                    created=int(time.time()),
+                    model=request.model,
+                    choices=[{
+                        "text": "",
+                        "index": 0,
+                        "logprobs": None,
+                        "finish_reason": "error"
+                    }],
+                    error=str(e)
+                )
+                yield f"data: {error_chunk.model_dump_json()}\n\n"
+            finally:
+                await concurrency_ctrl.release()
+
+        return generate_stream()
+    else:
+        # 对于非流式请求，直接返回CompletionResponse
+        return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
 
 
 @router.post("/completion", response_model=CompletionResponse)
@@ -175,6 +210,39 @@ async def legacy_completion(
     Legacy completion endpoint for compatibility with older clients
     Maps to the same functionality as /v1/completions
     """
-    from src.llama.core.logger_manager import logger
     logger.info(f"Route handler reached for /completion, model: {request.model}")
-    return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
+    if request.stream:
+        # 对于流式请求，使用不同的处理方式
+        async def generate_stream() -> AsyncGenerator[str, None]:
+            try:
+                async for chunk in service.generate_stream(request):
+                    yield f"data: {chunk.model_dump_json()}\n\n"
+
+                yield "data: [DONE]\n\n"
+            except asyncio.CancelledError:
+                logger.info(f"Stream cancelled for request {request.model}")
+                raise
+            except Exception as e:
+                logger.error(f"Stream generation error: {str(e)}")
+                from src.llama.models.common.stream_chunk import StreamChunk
+                error_chunk = StreamChunk(
+                    id=f"error-{int(time.time())}",
+                    object="text_completion.chunk",
+                    created=int(time.time()),
+                    model=request.model,
+                    choices=[{
+                        "text": "",
+                        "index": 0,
+                        "logprobs": None,
+                        "finish_reason": "error"
+                    }],
+                    error=str(e)
+                )
+                yield f"data: {error_chunk.model_dump_json()}\n\n"
+            finally:
+                await concurrency_ctrl.release()
+
+        return generate_stream()
+    else:
+        # 对于非流式请求，直接返回CompletionResponse
+        return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
