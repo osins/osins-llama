@@ -196,7 +196,7 @@ class CompletionService:
                     "frequency_penalty": request.frequency_penalty or 0.0,
                     "logit_bias": request.logit_bias
                 }
-                
+
                 # 添加其他可选参数，如果它们存在的话
                 if request.n is not None:
                     model_kwargs["n"] = request.n
@@ -216,9 +216,9 @@ class CompletionService:
                     model_kwargs["mirostat_tau"] = request.mirostat_tau
                 if request.mirostat_eta is not None:
                     model_kwargs["mirostat_eta"] = request.mirostat_eta
-                
+
                 response = model(**model_kwargs)
-                
+
                 # 验证响应格式
                 if not isinstance(response, dict) or "choices" not in response:
                     raise ServiceError("Invalid model response format")
@@ -255,6 +255,17 @@ class CompletionService:
                         finish_reason=finish_reason
                     )
                     choices.append(completion_choice)
+            else:
+                # 如果没有choices，创建一个默认选择
+                from src.llama.models.legacy.completion_choice import CompletionChoice
+                from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
+                completion_choice = CompletionChoice(
+                    text="",
+                    index=0,
+                    logprobs=None,
+                    finish_reason=CompletionFinishReason.STOP
+                )
+                choices = [completion_choice]
 
             # 计算用量
             from src.llama.models.common.usage import Usage
