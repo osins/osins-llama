@@ -1,451 +1,232 @@
-from typing import AsyncGenerator
-from fastapi import Request
+import time
+import uuid
+from typing import AsyncGenerator, Optional
+
+from src.llama.core.model_manager import ModelManager, filter_llama_params
+from src.llama.config.config import Config
 from src.llama.models.legacy.completion_request import CompletionRequest
 from src.llama.models.legacy.completion_response import CompletionResponse
 from src.llama.models.common.stream_chunk import StreamChunk
-from src.llama.core.model_manager import ModelManager
-from src.llama.config.config import Config
-from src.llama.utils.token_utils import count_tokens
-import asyncio
-import time
-import uuid
-from src.llama.exceptions import ServiceError
+from src.llama.exceptions.service_error import ServiceError
+from src.llama.core.logger_manager import logger
+
+import threading
+
+
+# SillyTavern / OpenAI 请求字段 → llama-cpp-python 参数名 映射表
+# 如果字段名相同则不需要出现在此表中，只映射"别名"字段
+_PARAM_ALIAS_MAP = {
+    # 同义的 max_tokens 字段，统一映射到 max_tokens
+    "max_new_tokens":          "max_tokens",
+    "n_predict":               "max_tokens",
+    "num_predict":             "max_tokens",
+    # 同义的 repeat_penalty 字段
+    "repetition_penalty":      "repeat_penalty",
+    "rep_pen":                 "repeat_penalty",
+    # 同义的 stop 字段
+    "stopping_strings":        "stop",
+    # 同义的 mirostat_mode 字段
+    "mirostat":                "mirostat_mode",
+    # 同义的 tfs_z 字段
+    "tfs":                     "tfs_z",
+}
+
+
+def _build_llama_params(request: CompletionRequest) -> dict:
+    """
+    将 CompletionRequest 转换为 llama-cpp-python 支持的参数字典。
+
+    处理流程：
+      1. 将 request 转为 dict（排除 None 值）
+      2. 按别名映射表重命名字段
+      3. 合并同义的 stop / stopping_strings
+      4. 通过白名单过滤，丢弃所有不支持的字段
+    """
+    # Step 1: 转为 dict，排除 None
+    raw: dict = {
+        k: v for k, v in request.model_dump().items()
+        if v is not None
+    }
+
+    # Step 2: 别名映射（注意：max_tokens 可能被多个字段设置，取最大值）
+    mapped: dict = {}
+    for key, value in raw.items():
+        target = _PARAM_ALIAS_MAP.get(key, key)
+
+        if target == "max_tokens" and "max_tokens" in mapped:
+            # 多个同义字段时取最大值
+            mapped["max_tokens"] = max(mapped["max_tokens"], value)
+        elif target == "repeat_penalty" and "repeat_penalty" in mapped:
+            # 以第一个出现的为准
+            pass
+        elif target == "stop" and "stop" in mapped:
+            # 合并去重
+            existing = mapped["stop"] if isinstance(mapped["stop"], list) else [mapped["stop"]]
+            new_val  = value          if isinstance(value, list)          else [value]
+            merged   = list(dict.fromkeys(existing + new_val))
+            mapped["stop"] = merged
+        else:
+            mapped[target] = value
+
+    # 降低 temperature 以提高生成稳定性（如果未指定或值过高）
+    if "temperature" not in mapped or mapped["temperature"] > 1.0:
+        mapped["temperature"] = 1.0
+
+    # Step 3: 通过白名单过滤（核心修复：丢弃 n, best_of, cache_prompt 等不支持字段）
+    clean = filter_llama_params(mapped)
+
+    logger.info(
+        f"_build_llama_params: raw keys={list(raw.keys())}, "
+        f"clean keys={list(clean.keys())}"
+    )
+    return clean
 
 
 class CompletionService:
     """
-    Completion服务类
-    处理文本生成请求，包括流式和非流式响应
+    文本补全服务
+    封装对 ModelManager 的调用，负责将 API 请求转换为模型调用参数
     """
 
     _instance = None
+    _lock = threading.Lock()
 
     def __init__(self, config: Config = None):
-        # If no config is provided, try to get it from the app state
-        # This avoids re-loading config from environment when running inside the API server
-        self.config = config
-        if self.config is None:
-            # Fallback to environment if not running in API server context
-            self.config = Config.from_env()
-        self.model_manager = ModelManager.get_instance(self.config)
+        self.config = config or Config.from_env()
+        self.model_manager = ModelManager.get_instance(config)
 
     @classmethod
-    def get_instance(cls, config: Config = None):
-        """
-        获取CompletionService单例实例
-        """
+    def get_instance(cls, config: Config = None) -> "CompletionService":
         if cls._instance is None:
-            cls._instance = cls(config)
-        elif config is not None:
-            # If a config is provided and instance already exists, update the config
-            cls._instance.config = config
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls(config)
         return cls._instance
 
-    def _validate_request(self, request: CompletionRequest):
+    # ------------------------------------------------------------------
+    # 流式生成
+    # ------------------------------------------------------------------
+    async def generate_stream(
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[StreamChunk, None]:
         """
-        验证请求参数
-
-        Args:
-            request: Completion请求对象
-
-        Raises:
-            ValueError: 参数验证失败时抛出
+        流式文本生成，逐 chunk yield StreamChunk
         """
         from src.llama.core.logger_manager import logger
-        logger.info("_validate_request called")
+        logger.info(f"CompletionService.generate_stream called for model: {request.model}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
+        
+        model = self.model_manager.get_model()
+        if model is None:
+            raise ServiceError("Model not loaded")
 
-        # 验证模型名称
-        if not request.model or len(request.model.strip()) == 0:
-            logger.error("Model name is required")
-            raise ValueError("Model name is required")
+        prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
+        params = _build_llama_params(request)
+        
+        # 降低 temperature 以提高生成稳定性
+        if "temperature" in params and params["temperature"] > 1.0:
+            params["temperature"] = 1.0  # 从1.5降低到1.0
+        
+        request_id = f"cmpl-{uuid.uuid4().hex[:8]}"
+        created    = int(time.time())
+        index      = 0
+        
+        # 记录开始生成的时间
+        start_time = time.time()
+        logger.info(f"Starting stream generation for request {request_id}, params: {list(params.keys())}")
 
-        logger.info(f"Model validation passed: {request.model}")
+        try:
+            async for text in self.model_manager.stream_generate(prompt, params):
+                yield StreamChunk(
+                    id=request_id,
+                    object="text_completion.chunk",
+                    created=created,
+                    model=request.model,
+                    choices=[{
+                        "text":          text,
+                        "index":         index,
+                        "logprobs":      None,
+                        "finish_reason": None,
+                    }],
+                )
+                index += 1
 
-        # 验证prompt
-        if request.prompt is None:
-            logger.error("Prompt is required")
-            raise ValueError("Prompt is required")
+            # 最后发送 finish chunk
+            elapsed_time = time.time() - start_time
+            logger.info(f"Stream generation completed for request {request_id}, total chunks: {index}, elapsed time: {elapsed_time:.2f}s")
+            
+            yield StreamChunk(
+                id=request_id,
+                object="text_completion.chunk",
+                created=created,
+                model=request.model,
+                choices=[{
+                    "text":          "",
+                    "index":         index,
+                    "logprobs":      None,
+                    "finish_reason": "stop",
+                }],
+            )
 
-        logger.info(f"Prompt is not None, type: {type(request.prompt)}")
+        except Exception as e:
+            logger.error(f"CompletionService.generate_stream error: {e}", exc_info=True)
+            raise ServiceError(f"Model generation failed: {e}")
 
-        if isinstance(request.prompt, str):
-            if len(request.prompt.strip()) == 0:
-                logger.error("Prompt cannot be empty")
-                raise ValueError("Prompt cannot be empty")
-        elif isinstance(request.prompt, list):
-            if len(request.prompt) == 0:
-                logger.error("Prompt list cannot be empty")
-                raise ValueError("Prompt list cannot be empty")
-            for i, p in enumerate(request.prompt):
-                if not isinstance(p, str) or len(p.strip()) == 0:
-                    logger.error(f"Prompt at index {i} cannot be empty")
-                    raise ValueError(f"Prompt at index {i} cannot be empty")
-
-        logger.info("Prompt validation passed")
-
-        # 验证max_tokens
-        if request.max_tokens is not None and request.max_tokens <= 0:
-            logger.error(f"max_tokens must be positive, got: {request.max_tokens}")
-            raise ValueError("max_tokens must be positive")
-
-        logger.info(f"max_tokens validation passed: {request.max_tokens}")
-
-        # 验证temperature
-        if request.temperature is not None:
-            temp = request.temperature
-            if temp < 0.0 or temp > 2.0:
-                logger.error(f"temperature must be between 0.0 and 2.0, got: {temp}")
-                raise ValueError("temperature must be between 0.0 and 2.0")
-
-        logger.info(f"temperature validation passed: {request.temperature}")
-
-        # 验证top_p
-        if request.top_p is not None:
-            topp = request.top_p
-            if topp <= 0.0 or topp > 1.0:
-                logger.error(f"top_p must be between 0.0 and 1.0, got: {topp}")
-                raise ValueError("top_p must be between 0.0 and 1.0")
-
-        logger.info(f"top_p validation passed: {request.top_p}")
-
-        # 验证n
-        if request.n is not None:
-            n_val = request.n
-            if n_val <= 0 or n_val > 128:
-                logger.error(f"n must be between 1 and 128, got: {n_val}")
-                raise ValueError("n must be between 1 and 128")
-
-        logger.info(f"n validation passed: {request.n}")
-
-        # 验证presence_penalty
-        if request.presence_penalty is not None:
-            penalty = request.presence_penalty
-            if penalty < -2.0 or penalty > 2.0:
-                logger.error(f"presence_penalty must be between -2.0 and 2.0, got: {penalty}")
-                raise ValueError("presence_penalty must be between -2.0 and 2.0")
-
-        logger.info(f"presence_penalty validation passed: {request.presence_penalty}")
-
-        # 验证frequency_penalty
-        if request.frequency_penalty is not None:
-            freq_penalty = request.frequency_penalty
-            if freq_penalty < -2.0 or freq_penalty > 2.0:
-                logger.error(f"frequency_penalty must be between -2.0 and 2.0, got: {freq_penalty}")
-                raise ValueError("frequency_penalty must be between -2.0 and 2.0")
-
-        logger.info("All validations passed")
-
+    # ------------------------------------------------------------------
+    # 非流式生成
+    # ------------------------------------------------------------------
     async def generate(self, request: CompletionRequest) -> CompletionResponse:
         """
-        生成非流式响应
-
-        Args:
-            request: Completion请求对象
-
-        Returns:
-            CompletionResponse: 完整的响应对象
+        非流式文本生成，返回完整 CompletionResponse
         """
         from src.llama.core.logger_manager import logger
-        logger.info("CompletionService.generate called")
+        logger.info(f"CompletionService.generate called for model: {request.model}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
+        
+        model = self.model_manager.get_model()
+        if model is None:
+            raise ServiceError("Model not loaded")
+
+        prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
+        params = _build_llama_params(request)
+        
+        # 降低 temperature 以提高生成稳定性
+        if "temperature" in params and params["temperature"] > 1.0:
+            params["temperature"] = 1.0  # 从1.5降低到1.0
+
+        # 记录开始生成的时间
+        start_time = time.time()
+        logger.info(f"Starting non-stream generation for params: {list(params.keys())}")
 
         try:
-            # 验证请求参数
-            self._validate_request(request)
-            logger.info("Request validation passed")
-
-            # 获取模型实例
-            model = self.model_manager.get_model()
-            if model is None:
-                raise ServiceError("Model not loaded")
-
-            # 检查token数量
-            prompt_tokens = 0
-            if isinstance(request.prompt, str):
-                prompt_tokens = count_tokens(request.prompt)
-            else:
-                # 如果是多个prompt，计算总token数
-                for prompt in request.prompt:
-                    prompt_tokens += count_tokens(prompt)
-
-            if prompt_tokens > self.config.resources.max_prompt_tokens:
-                raise ValueError(f"Prompt exceeds maximum token count: {self.config.resources.max_prompt_tokens}")
-
-            # 生成响应
-            start_time = time.time()
-
-            # 根据请求参数生成文本
-            if isinstance(request.prompt, str):
-                prompt = request.prompt
-            else:
-                # 如果是多个prompt，只使用第一个
-                prompt = request.prompt[0] if request.prompt else ""
-
-            try:
-                # 构建模型调用参数字典，只包含支持的参数
-                model_kwargs = {
-                    "prompt": prompt,
-                    "max_tokens": request.max_tokens or request.max_new_tokens or 16,
-                    "temperature": request.temperature or 1.0,
-                    "top_p": request.top_p or 1.0,
-                    "top_k": request.top_k or 40,
-                    "stream": False,  # 非流式
-                    "logprobs": getattr(request, 'logprobs', None),
-                    "echo": getattr(request, 'echo', False),
-                    "stop": request.stop,
-                    "presence_penalty": request.presence_penalty or 0.0,
-                    "frequency_penalty": request.frequency_penalty or 0.0,
-                    "logit_bias": request.logit_bias
-                }
-
-                # 添加其他可选参数，如果它们存在的话
-                if request.n is not None:
-                    model_kwargs["n"] = request.n
-                if request.best_of is not None:
-                    model_kwargs["best_of"] = request.best_of
-                if request.repetition_penalty is not None:
-                    model_kwargs["repetition_penalty"] = request.repetition_penalty
-                if request.min_p is not None:
-                    model_kwargs["min_p"] = request.min_p
-                if request.typical_p is not None:
-                    model_kwargs["typical_p"] = request.typical_p
-                if request.tfs is not None:
-                    model_kwargs["tfs"] = request.tfs
-                if request.mirostat_mode is not None:
-                    model_kwargs["mirostat_mode"] = request.mirostat_mode
-                if request.mirostat_tau is not None:
-                    model_kwargs["mirostat_tau"] = request.mirostat_tau
-                if request.mirostat_eta is not None:
-                    model_kwargs["mirostat_eta"] = request.mirostat_eta
-
-                response = model(**model_kwargs)
-
-                # 验证响应格式
-                if not isinstance(response, dict) or "choices" not in response:
-                    raise ServiceError("Invalid model response format")
-            except Exception as e:
-                raise ServiceError(f"Model generation failed: {str(e)}")
-
-            # 解析模型响应
-            choices = []
-            if "choices" in response and isinstance(response["choices"], list):
-                for idx, choice in enumerate(response["choices"]):
-                    # 验证choice格式
-                    if not isinstance(choice, dict):
-                        raise ServiceError(f"Invalid choice format at index {idx}")
-
-                    # 构造选择项
-                    from src.llama.models.legacy.completion_choice import CompletionChoice
-                    from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
-
-                    finish_reason_str = choice.get("finish_reason", "stop")
-                    # 将字符串转换为枚举值
-                    try:
-                        finish_reason = CompletionFinishReason(finish_reason_str)
-                    except ValueError:
-                        # 如果不是有效的枚举值，默认为stop
-                        finish_reason = CompletionFinishReason.STOP
-                        
-                    text = choice.get("text", "")
-
-                    logprobs = choice.get("logprobs", None)
-                    completion_choice = CompletionChoice(
-                        text=text,
-                        index=idx,
-                        logprobs=logprobs,
-                        finish_reason=finish_reason
-                    )
-                    choices.append(completion_choice)
-            else:
-                # 如果没有choices，创建一个默认选择
-                from src.llama.models.legacy.completion_choice import CompletionChoice
-                from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
-                completion_choice = CompletionChoice(
-                    text="",
-                    index=0,
-                    logprobs=None,
-                    finish_reason=CompletionFinishReason.STOP
-                )
-                choices = [completion_choice]
-
-            # 计算用量
-            from src.llama.models.common.usage import Usage
-            prompts = request.prompt if isinstance(request.prompt, list) else [request.prompt]
-            prompt_tokens = sum(count_tokens(prompt) for prompt in prompts)
-            completion_tokens = sum(count_tokens(choice.text) for choice in choices)
-            total_tokens = prompt_tokens + completion_tokens
-
-            usage = Usage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens
-            )
-
-            # 构造响应对象，确保所有必需字段都有值
-            response_obj = CompletionResponse(
-                id=f"cmpl-{uuid.uuid4().hex}",
-                created=int(start_time),
-                model=request.model,
-                choices=choices,
-                usage=usage
-            )
-
-            return response_obj
-        except ValueError as ve:
-            # 捕获参数验证错误
-            raise ve
-        except ServiceError:
-            # 重新抛出服务错误
-            raise
+            result = await self.model_manager.generate(prompt, params)
         except Exception as e:
-            # 捕获其他异常并重新抛出
-            raise ServiceError(f"Unexpected error during generation: {str(e)}")
+            logger.error(f"CompletionService.generate error: {e}", exc_info=True)
+            raise ServiceError(f"Model generation failed: {e}")
 
-    async def generate_stream(self, request: CompletionRequest) -> AsyncGenerator[StreamChunk, None]:
-        """
-        生成流式响应
+        # 记录生成完成的时间
+        elapsed_time = time.time() - start_time
+        logger.info(f"Non-stream generation completed, elapsed time: {elapsed_time:.2f}s")
 
-        Args:
-            request: Completion请求对象
+        # 解析 llama-cpp-python 返回的原始 dict
+        choices = result.get("choices", [])
+        usage   = result.get("usage", {})
 
-        Yields:
-            StreamChunk: 流式数据块
-        """
-        try:
-            # 验证请求参数
-            self._validate_request(request)
-
-            # 获取模型实例
-            model = self.model_manager.get_model()
-            if model is None:
-                raise ServiceError("Model not loaded")
-
-            # 检查token数量
-            prompt_tokens = 0
-            if isinstance(request.prompt, str):
-                prompt_tokens = count_tokens(request.prompt)
-            else:
-                # 如果是多个prompt，计算总token数
-                for prompt in request.prompt:
-                    prompt_tokens += count_tokens(prompt)
-
-            if prompt_tokens > self.config.resources.max_prompt_tokens:
-                raise ValueError(f"Prompt exceeds maximum token count: {self.config.resources.max_prompt_tokens}")
-
-            # 生成流式响应
-            if isinstance(request.prompt, str):
-                prompt = request.prompt
-            else:
-                # 如果是多个prompt，只使用第一个
-                prompt = request.prompt[0] if request.prompt else ""
-
-            try:
-                # 由于llama-cpp-python的流式功能，我们模拟流式响应
-                # 实际应用中，这里应该是真正的流式生成
-                # 构建模型调用参数字典，只包含支持的参数
-                model_kwargs = {
-                    "prompt": prompt,
-                    "max_tokens": request.max_tokens or request.max_new_tokens or 16,
-                    "temperature": request.temperature or 1.0,
-                    "top_p": request.top_p or 1.0,
-                    "top_k": request.top_k or 40,
-                    "stream": True,  # 流式
-                    "logprobs": getattr(request, 'logprobs', None),
-                    "echo": getattr(request, 'echo', False),
-                    "stop": request.stop,
-                    "presence_penalty": request.presence_penalty or 0.0,
-                    "frequency_penalty": request.frequency_penalty or 0.0,
-                    "logit_bias": request.logit_bias
+        return CompletionResponse(
+            id=result.get("id", f"cmpl-{uuid.uuid4().hex[:8]}"),
+            object="text_completion",
+            created=result.get("created", int(time.time())),
+            model=request.model,
+            choices=[
+                {
+                    "text":          c.get("text", ""),
+                    "index":         c.get("index", 0),
+                    "logprobs":      c.get("logprobs"),
+                    "finish_reason": c.get("finish_reason", "stop"),
                 }
-                
-                # 添加其他可选参数，如果它们存在的话
-                if request.n is not None:
-                    model_kwargs["n"] = request.n
-                if request.best_of is not None:
-                    model_kwargs["best_of"] = request.best_of
-                if request.repetition_penalty is not None:
-                    model_kwargs["repetition_penalty"] = request.repetition_penalty
-                if request.min_p is not None:
-                    model_kwargs["min_p"] = request.min_p
-                if request.typical_p is not None:
-                    model_kwargs["typical_p"] = request.typical_p
-                if request.tfs is not None:
-                    model_kwargs["tfs"] = request.tfs
-                if request.mirostat_mode is not None:
-                    model_kwargs["mirostat_mode"] = request.mirostat_mode
-                if request.mirostat_tau is not None:
-                    model_kwargs["mirostat_tau"] = request.mirostat_tau
-                if request.mirostat_eta is not None:
-                    model_kwargs["mirostat_eta"] = request.mirostat_eta
-                
-                response_generator = model(**model_kwargs)
-            except Exception as e:
-                raise ServiceError(f"Model generation failed: {str(e)}")
-
-            # 生成ID
-            gen_id = f"cmpl-{uuid.uuid4().hex}"
-            created_time = int(time.time())
-
-            # 模拟流式输出
-            full_text = ""
-            for chunk in response_generator:
-                # 检查是否取消请求
-                if asyncio.current_task().cancelled():
-                    break
-                
-                # 验证chunk格式
-                if not isinstance(chunk, dict) or "choices" not in chunk:
-                    raise ServiceError("Invalid chunk format from model")
-                
-                # 提取文本片段
-                if "choices" in chunk and len(chunk["choices"]) > 0:
-                    choice = chunk["choices"][0]
-                    if not isinstance(choice, dict):
-                        raise ServiceError("Invalid choice format in chunk")
-                        
-                    delta_text = choice.get("text", "")
-                    full_text += delta_text
-
-                    # 创建流式数据块
-                    stream_chunk = StreamChunk(
-                        id=gen_id,
-                        object="text_completion.chunk",
-                        created=created_time,
-                        model=request.model,
-                        choices=[
-                            {
-                                "text": delta_text,
-                                "index": 0,
-                                "logprobs": choice.get("logprobs", None),
-                                "finish_reason": None
-                            }
-                        ]
-                    )
-
-                    yield stream_chunk
-
-            # 发送结束块
-            end_chunk = StreamChunk(
-                id=gen_id,
-                object="text_completion.chunk",
-                created=created_time,
-                model=request.model,
-                choices=[
-                    {
-                        "text": "",
-                        "index": 0,
-                        "logprobs": None,
-                        "finish_reason": "stop"
-                    }
-                ]
-            )
-
-            yield end_chunk
-        except ValueError as ve:
-            # 捕获参数验证错误
-            raise ve
-        except ServiceError:
-            # 重新抛出服务错误
-            raise
-        except Exception as e:
-            # 捕获其他异常并重新抛出
-            raise ServiceError(f"Unexpected error during streaming: {str(e)}")
+                for c in choices
+            ],
+            usage={
+                "prompt_tokens":     usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens":      usage.get("total_tokens", 0),
+            },
+        )

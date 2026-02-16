@@ -155,11 +155,11 @@ def validate_and_check_pid_file(pid_file: Path) -> None:
             # 尝试读取PID文件内容
             with open(pid_file, 'r') as f:
                 pid_str = f.read().strip()
-                
+
             if pid_str.isdigit():
                 pid = int(pid_str)
                 process_exists = False
-                
+
                 # 检查进程是否仍在运行
                 try:
                     if sys.platform == 'win32':
@@ -175,7 +175,7 @@ def validate_and_check_pid_file(pid_file: Path) -> None:
                         process_exists = True
                 except Exception:
                     process_exists = False
-                
+
                 if process_exists:
                     raise click.BadParameter(
                         f"Process with PID {pid} is already running. "
@@ -389,6 +389,14 @@ def start(
         config_path = ctx.obj.config_path
         config_manager = ConfigManager(config_path)
         config = config_manager.load(cli_overrides=cli_overrides)
+
+        # 检查端口是否已被占用，如果是则立即退出
+        from src.llama.utils.pid_tools import find_pid_by_port
+        port_pid = find_pid_by_port(config.port)
+        if port_pid:
+            click.echo(f"Error: Port {config.port} is already in use by process with PID {port_pid}")
+            click.echo("Please stop the existing process first or use a different port.")
+            raise click.ClickException(f"Port {config.port} is already in use by process {port_pid}")
 
         # Initialize process manager
         process_manager = ProcessManager(

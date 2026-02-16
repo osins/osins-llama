@@ -88,78 +88,145 @@ class ProcessManager:
 
     def start_detached(self, pid_data=None):
         """以分离模式启动服务器进程（不捕获输出，适用于守护进程）"""
-        return self.start(pid_data=pid_data, capture_output=False)
+        # 检查是否已有进程在运行
+        if self.is_running():
+            raise ProcessAlreadyRunning(f"Server is already running (PID: {self.get_pid()})")
+
+        cmd = self.pid_manager.get_cmd(pid_data)
+        if not cmd:
+            raise Exception("No saved data found in PID file, unable to start")
+
+        self.logger.info(f"Starting server with command: {' '.join(cmd)}")
+        
+        # 不捕获输出，直接启动进程
+        process = subprocess.Popen(cmd)
+        
+        self.logger.info(f"Started server process with PID: {process.pid}")
+
+        # 立即写入PID文件
+        if pid_data:
+            pid_data.pid = process.pid
+            self.pid_manager.write(pid_data)
+
+        # ⚠️ 守护模式不等待端口，立即返回
+        return process
 
     def stop(self):
         """停止服务器进程"""
         # 通过pid_manager获取PID
         pid_data = self.pid_manager.read(validate=True)
-        if not pid_data or not pid_data.pid:
-            return False
+        
+        # 首先尝试从PID文件获取PID
+        pids_to_kill = []
+        if pid_data and pid_data.pid:
+            pids_to_kill.append(pid_data.pid)
 
-        pid = pid_data.pid
-        try:
-            # 尝试向进程发送SIGTERM信号终止它
-            if sys.platform == 'win32':
-                # Windows上使用taskkill命令
-                import subprocess
-                subprocess.run(['taskkill', '/PID', str(pid), '/F'], 
-                              stdout=subprocess.DEVNULL, 
-                              stderr=subprocess.DEVNULL)
-            else:
-                # Unix-like系统上使用kill命令
-                os.kill(pid, signal.SIGTERM)
-                
-                # 等待进程结束，如果没结束则强制杀死
-                for _ in range(10):  # 等待最多10秒
-                    if not is_process_running(pid):
-                        break
-                    time.sleep(1)
+        # 尝试通过端口查找可能的进程（即使PID文件中没有PID）
+        if pid_data and pid_data.port:
+            port_pid = find_pid_by_port(pid_data.port)
+            if port_pid and port_pid not in pids_to_kill:
+                pids_to_kill.append(port_pid)
+                logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
+        else:
+            # 尝试默认端口
+            default_port_pid = find_pid_by_port(31301)
+            if default_port_pid and default_port_pid not in pids_to_kill:
+                pids_to_kill.append(default_port_pid)
+                logger.info(f"Found process {default_port_pid} on default port 31301, adding to kill list")
+
+        success = True
+        for pid in pids_to_kill:
+            try:
+                # 尝试向进程发送SIGTERM信号终止它
+                if sys.platform == 'win32':
+                    # Windows上使用taskkill命令
+                    import subprocess
+                    result = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
+                                          capture_output=True, text=True)
+                    if result.returncode != 0:
+                        logger.warning(f"Failed to kill process {pid}: {result.stderr}")
+                        success = False
                 else:
-                    # 如果进程仍然存在，强制杀死
-                    try:
-                        os.kill(pid, signal.SIGKILL)
-                    except OSError:
-                        pass  # 进程可能已经退出
+                    # Unix-like系统上使用kill命令
+                    os.kill(pid, signal.SIGTERM)
 
-            # 删除PID文件
-            self.pid_manager.delete()
+                    # 等待进程结束，如果没结束则强制杀死
+                    for _ in range(10):  # 等待最多10秒
+                        if not is_process_running(pid):
+                            break
+                        time.sleep(1)
+                    else:
+                        # 如果进程仍然存在，强制杀死
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except OSError:
+                            pass  # 进程可能已经退出
 
-            return True
-        except OSError:
-            # 进程已经不存在或无权访问
+            except OSError as e:
+                logger.info(f"Process {pid} already terminated or access denied: {e}")
+                # 进程已经不存在或无权访问，继续处理下一个PID
+
+        # 删除PID文件
+        try:
             self.pid_manager.delete()
-            return False
+        except Exception as e:
+            logger.warning(f"Failed to delete PID file: {e}")
+
+        return success
 
     def force_kill(self):
         """强制杀死服务器进程"""
+        # 通过pid_manager获取PID
         pid_data = self.pid_manager.read(validate=True)
-        if not pid_data or not pid_data.pid:
-            return False
+        
+        # 首先尝试从PID文件获取PID
+        pids_to_kill = []
+        if pid_data and pid_data.pid:
+            pids_to_kill.append(pid_data.pid)
 
-        pid = pid_data.pid
+        # 尝试通过端口查找可能的进程（即使PID文件中没有PID）
+        if pid_data and pid_data.port:
+            port_pid = find_pid_by_port(pid_data.port)
+            if port_pid and port_pid not in pids_to_kill:
+                pids_to_kill.append(port_pid)
+                logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
+        else:
+            # 尝试默认端口
+            default_port_pid = find_pid_by_port(31301)
+            if default_port_pid and default_port_pid not in pids_to_kill:
+                pids_to_kill.append(default_port_pid)
+                logger.info(f"Found process {default_port_pid} on default port 31301, adding to kill list")
+
+        success = True
+        for pid in pids_to_kill:
+            try:
+                if sys.platform == 'win32':
+                    import subprocess
+                    result = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
+                                          capture_output=True, text=True)
+                    if result.returncode != 0:
+                        logger.warning(f"Failed to kill process {pid}: {result.stderr}")
+                        success = False
+                else:
+                    os.kill(pid, signal.SIGKILL)
+
+                # 等待进程结束
+                for _ in range(5):  # 等待最多5秒
+                    if not is_process_running(pid):
+                        break
+                    time.sleep(1)
+
+            except OSError as e:
+                logger.info(f"Process {pid} already terminated or access denied: {e}")
+                # 进程已经不存在或无权访问，继续处理下一个PID
+
+        # 删除PID文件
         try:
-            if sys.platform == 'win32':
-                import subprocess
-                subprocess.run(['taskkill', '/PID', str(pid), '/F'], 
-                              stdout=subprocess.DEVNULL, 
-                              stderr=subprocess.DEVNULL)
-            else:
-                os.kill(pid, signal.SIGKILL)
-            
-            # 等待进程结束
-            for _ in range(5):  # 等待最多5秒
-                if not is_process_running(pid):
-                    break
-                time.sleep(1)
-            
-            # 删除PID文件
             self.pid_manager.delete()
-            return True
-        except OSError:
-            # 进程已经不存在或无权访问
-            self.pid_manager.delete()
-            return False
+        except Exception as e:
+            logger.warning(f"Failed to delete PID file: {e}")
+
+        return success
 
     def restart(self):
         """重启服务器进程"""

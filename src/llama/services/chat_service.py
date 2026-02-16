@@ -97,6 +97,9 @@ class ChatService:
         Returns:
             ChatCompletionResponse: 完整的响应对象
         """
+        from src.llama.core.logger_manager import logger
+        logger.info(f"ChatService.generate called for model: {request.model}, messages count: {len(request.messages)}")
+
         try:
             # 验证请求参数
             self._validate_request(request)
@@ -118,22 +121,42 @@ class ChatService:
             formatted_messages = self._format_messages(request.messages)
 
             try:
-                # 生成响应
-                response = model(
-                    formatted_messages,
-                    max_tokens=request.max_tokens or 1000,
-                    temperature=request.temperature or 0.7,
-                    top_p=request.top_p or 1.0,
-                    stream=False,  # 非流式
-                    stop=request.stop,
-                    presence_penalty=request.presence_penalty or 0.0,
-                    frequency_penalty=request.frequency_penalty or 0.0
-                )
+                # 构建模型调用参数字典
+                raw_kwargs = {
+                    "prompt": formatted_messages,
+                    "max_tokens": request.max_tokens or 1000,
+                    "temperature": request.temperature or 0.7,
+                    "top_p": request.top_p or 1.0,
+                    "stream": False,  # 非流式
+                    "stop": request.stop,
+                    "presence_penalty": request.presence_penalty or 0.0,
+                    "frequency_penalty": request.frequency_penalty or 0.0
+                }
+
+                # 应用参数过滤
+                from src.llama.core.model_manager import filter_llama_params
+                model_kwargs = filter_llama_params(raw_kwargs)
                 
+                # 降低 temperature 以提高生成稳定性
+                if "temperature" not in model_kwargs or model_kwargs["temperature"] > 1.0:
+                    model_kwargs["temperature"] = 1.0  # 从更高值降低到1.0
+
+                # 记录开始生成的时间
+                gen_start_time = time.time()
+                logger.info(f"Starting non-stream chat generation for params: {list(model_kwargs.keys())}")
+
+                # 生成响应
+                response = model(**model_kwargs)
+
+                # 记录生成完成的时间
+                elapsed_time = time.time() - gen_start_time
+                logger.info(f"Non-stream chat generation completed, elapsed time: {elapsed_time:.2f}s")
+
                 # 验证响应格式
                 if not isinstance(response, dict) or "choices" not in response:
                     raise ServiceError("Invalid model response format")
             except Exception as e:
+                logger.error(f"ChatService.generate error: {e}", exc_info=True)
                 raise ServiceError(f"Model generation failed: {str(e)}")
 
             # 构造响应对象
@@ -152,7 +175,7 @@ class ChatService:
                     # 验证choice格式
                     if not isinstance(choice, dict):
                         raise ServiceError(f"Invalid choice format at index {idx}")
-                    
+
                     # 创建选择项
                     from src.llama.models.chat.chat_completion_choice import ChatCompletionChoice
                     from src.llama.models.chat.chat_message import ChatMessage
@@ -211,6 +234,9 @@ class ChatService:
         Yields:
             ChatCompletionChunk: 流式数据块
         """
+        from src.llama.core.logger_manager import logger
+        logger.info(f"ChatService.generate_stream called for model: {request.model}, messages count: {len(request.messages)}")
+
         try:
             # 验证请求参数
             self._validate_request(request)
@@ -229,18 +255,38 @@ class ChatService:
             formatted_messages = self._format_messages(request.messages)
 
             try:
+                # 构建模型调用参数字典
+                raw_kwargs = {
+                    "prompt": formatted_messages,
+                    "max_tokens": request.max_tokens or 1000,
+                    "temperature": request.temperature or 0.7,
+                    "top_p": request.top_p or 1.0,
+                    "stream": True,  # 流式
+                    "stop": request.stop,
+                    "presence_penalty": request.presence_penalty or 0.0,
+                    "frequency_penalty": request.frequency_penalty or 0.0
+                }
+
+                # 应用参数过滤
+                from src.llama.core.model_manager import filter_llama_params
+                model_kwargs = filter_llama_params(raw_kwargs)
+                
+                # 降低 temperature 以提高生成稳定性
+                if "temperature" not in model_kwargs or model_kwargs["temperature"] > 1.0:
+                    model_kwargs["temperature"] = 1.0  # 从更高值降低到1.0
+
+                # 记录开始生成的时间
+                gen_start_time = time.time()
+                logger.info(f"Starting stream chat generation for params: {list(model_kwargs.keys())}")
+
                 # 生成流式响应
-                response_generator = model(
-                    formatted_messages,
-                    max_tokens=request.max_tokens or 1000,
-                    temperature=request.temperature or 0.7,
-                    top_p=request.top_p or 1.0,
-                    stream=True,  # 流式
-                    stop=request.stop,
-                    presence_penalty=request.presence_penalty or 0.0,
-                    frequency_penalty=request.frequency_penalty or 0.0
-                )
+                response_generator = model(**model_kwargs)
+
+                # 记录生成完成的时间
+                elapsed_time = time.time() - gen_start_time
+                logger.info(f"Stream chat generation setup completed, elapsed time: {elapsed_time:.2f}s")
             except Exception as e:
+                logger.error(f"ChatService.generate_stream error during generation: {e}", exc_info=True)
                 raise ServiceError(f"Model generation failed: {str(e)}")
 
             # 生成ID
@@ -249,46 +295,50 @@ class ChatService:
 
             # 模拟流式输出
             full_content = ""
-            for chunk in response_generator:
-                # 检查是否取消请求
-                if asyncio.current_task().cancelled():
-                    break
-                
-                # 验证chunk格式
-                if not isinstance(chunk, dict) or "choices" not in chunk:
-                    raise ServiceError("Invalid chunk format from model")
-                
-                # 提取文本片段
-                if "choices" in chunk and len(chunk["choices"]) > 0:
-                    choice = chunk["choices"][0]
-                    if not isinstance(choice, dict):
-                        raise ServiceError("Invalid choice format in chunk")
-                        
-                    delta_content = choice.get("delta", {}).get("content", "")
-                    full_content += delta_content
+            try:
+                for chunk in response_generator:
+                    # 检查是否取消请求
+                    if asyncio.current_task().cancelled():
+                        break
 
-                    # 创建流式数据块
-                    from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-                    from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
-                    from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
+                    # 验证chunk格式
+                    if not isinstance(chunk, dict) or "choices" not in chunk:
+                        raise ServiceError("Invalid chunk format from model")
 
-                    delta = ChatCompletionDelta(content=delta_content, role="assistant")
+                    # 提取文本片段
+                    if "choices" in chunk and len(chunk["choices"]) > 0:
+                        choice = chunk["choices"][0]
+                        if not isinstance(choice, dict):
+                            raise ServiceError("Invalid choice format in chunk")
 
-                    chunk_choice = ChatCompletionChunkChoice(
-                        index=0,
-                        delta=delta,
-                        finish_reason=None
-                    )
+                        delta_content = choice.get("delta", {}).get("content", "")
+                        full_content += delta_content
 
-                    stream_chunk = ChatCompletionChunk(
-                        id=gen_id,
-                        object="chat.completion.chunk",
-                        created=created_time,
-                        model=request.model,
-                        choices=[chunk_choice]
-                    )
+                        # 创建流式数据块
+                        from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+                        from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+                        from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
 
-                    yield stream_chunk
+                        delta = ChatCompletionDelta(content=delta_content, role="assistant")
+
+                        chunk_choice = ChatCompletionChunkChoice(
+                            index=0,
+                            delta=delta,
+                            finish_reason=None
+                        )
+
+                        stream_chunk = ChatCompletionChunk(
+                            id=gen_id,
+                            object="chat.completion.chunk",
+                            created=created_time,
+                            model=request.model,
+                            choices=[chunk_choice]
+                        )
+
+                        yield stream_chunk
+            except Exception as e:
+                logger.error(f"Error during stream processing: {e}", exc_info=True)
+                raise ServiceError(f"Stream processing failed: {str(e)}")
 
             # 发送结束块
             end_chunk = ChatCompletionChunk(
@@ -314,6 +364,7 @@ class ChatService:
             raise
         except Exception as e:
             # 捕获其他异常并重新抛出
+            logger.error(f"ChatService.generate_stream error: {e}", exc_info=True)
             raise ServiceError(f"Unexpected error during streaming: {str(e)}")
 
     def _format_messages(self, messages):
