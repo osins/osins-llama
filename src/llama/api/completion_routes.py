@@ -147,7 +147,7 @@ async def _handle_completion_request(
             await concurrency_ctrl.release()
 
 
-@router.post("/v1/completions", response_model=CompletionResponse)
+@router.post("/v1/completions")
 async def create_completion(
     request: CompletionRequest,
     req: Request,
@@ -197,7 +197,7 @@ async def create_completion(
         return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
 
 
-@router.post("/completion", response_model=CompletionResponse)
+@router.post("/completion")
 async def legacy_completion(
     request: CompletionRequest,
     req: Request,
