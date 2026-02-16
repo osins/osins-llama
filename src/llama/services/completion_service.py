@@ -189,7 +189,7 @@ class CompletionService:
                     "top_p": request.top_p or 1.0,
                     "top_k": request.top_k or 40,
                     "stream": False,  # 非流式
-                    "logprobs": request.logprobs,
+                    "logprobs": getattr(request, 'logprobs', None),
                     "echo": request.echo or False,
                     "stop": request.stop,
                     "presence_penalty": request.presence_penalty or 0.0,
@@ -349,7 +349,7 @@ class CompletionService:
                     "top_p": request.top_p or 1.0,
                     "top_k": request.top_k or 40,
                     "stream": True,  # 流式
-                    "logprobs": request.logprobs,
+                    "logprobs": getattr(request, 'logprobs', None),
                     "echo": request.echo or False,
                     "stop": request.stop,
                     "presence_penalty": request.presence_penalty or 0.0,
