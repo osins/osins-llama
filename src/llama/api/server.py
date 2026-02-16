@@ -99,6 +99,15 @@ def create_app(config: Config):
             content={"detail": exc.errors()}
         )
 
+    # Global exception handler for response validation errors
+    @app.exception_handler(ResponseValidationError)
+    async def response_validation_exception_handler(request: Request, exc: ResponseValidationError):
+        logger.error(f"RESPONSE_VALIDATION_ERROR - URL: {request.url} | ClientIP: {request.client.host if request.client else 'unknown'} | Errors: {exc.errors()}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Response validation error", "errors": exc.errors()}
+        )
+
     return app
 
 
