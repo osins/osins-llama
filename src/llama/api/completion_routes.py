@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
 import asyncio
 import time
@@ -161,7 +162,7 @@ async def create_completion(
     """
     logger.info(f"Route handler reached for /v1/completions, model: {request.model}")
     if request.stream:
-        # 对于流式请求，使用不同的处理方式
+        # 对于流式请求，使用 StreamingResponse
         async def generate_stream() -> AsyncGenerator[str, None]:
             try:
                 async for chunk in service.generate_stream(request):
@@ -191,7 +192,7 @@ async def create_completion(
             finally:
                 await concurrency_ctrl.release()
 
-        return generate_stream()
+        return StreamingResponse(generate_stream(), media_type="text/event-stream")
     else:
         # 对于非流式请求，直接返回CompletionResponse
         return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
@@ -212,7 +213,7 @@ async def legacy_completion(
     """
     logger.info(f"Route handler reached for /completion, model: {request.model}")
     if request.stream:
-        # 对于流式请求，使用不同的处理方式
+        # 对于流式请求，使用 StreamingResponse
         async def generate_stream() -> AsyncGenerator[str, None]:
             try:
                 async for chunk in service.generate_stream(request):
@@ -242,7 +243,7 @@ async def legacy_completion(
             finally:
                 await concurrency_ctrl.release()
 
-        return generate_stream()
+        return StreamingResponse(generate_stream(), media_type="text/event-stream")
     else:
         # 对于非流式请求，直接返回CompletionResponse
         return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
