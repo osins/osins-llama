@@ -74,7 +74,7 @@ class CompletionParams(BaseDataModel):
     mirostat: Optional[Union[int, str]] = Field(default=0, description="mirostat")
     ignore_eos: Optional[Union[bool, str]] = Field(default=False, description="忽略EOS")
     rep_pen_slope: Optional[Union[float, str]] = Field(default=0.0, description="重复惩罚斜率")
-    logit_bias: Optional[Dict[str, Any]] = Field(default=None, max_length=1000, description="logit偏差")
+    logit_bias: Optional[Union[Dict[str, Any], List[Any]]] = Field(default=None, description="logit偏差")
     grammar: Optional[str] = Field(default="", description="语法")
     cache_prompt: Optional[Union[bool, str]] = Field(default=False, description="缓存提示")
     stream: Optional[Union[bool, str]] = Field(default=False, description="流式传输")
@@ -116,6 +116,22 @@ class CompletionParams(BaseDataModel):
                 raise ValueError(f"Cannot convert {v} to float")
         return v
     
+    @field_validator('logit_bias', mode='before')
+    @classmethod
+    def validate_logit_bias(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
+            # 如果是空列表，转换为空字典
+            if len(v) == 0:
+                return {}
+            # 如果是非空列表，抛出错误或转换为字典
+            # 对于OpenAI兼容性，我们将其转换为空字典
+            return {}
+        return v
+
     @field_validator('add_bos_token', 'ban_eos_token', 'skip_special_tokens', 'include_reasoning',
                      'cache_prompt', 'stream', 'ignore_eos', mode='before')
     @classmethod
