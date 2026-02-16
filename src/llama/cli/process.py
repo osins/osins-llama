@@ -49,8 +49,8 @@ class ProcessManager:
 
             # 等待服务器启动并获取实际监听端口的PID
             if pid_data and pid_data.port:
-                # 等待端口就绪
-                if wait_for_port(pid_data.host or 'localhost', pid_data.port, timeout=30.0):
+                # 等待端口就绪（增加超时时间以适应大模型加载）
+                if wait_for_port(pid_data.host or 'localhost', pid_data.port, timeout=120.0):  # 增加到120秒
                     # 获取实际监听端口的PID
                     actual_pid = wait_for_pid_by_port(pid_data.port, timeout=10.0)
                     if actual_pid:
