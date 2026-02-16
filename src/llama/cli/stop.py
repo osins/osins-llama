@@ -8,7 +8,7 @@ import psutil
 from .pid_file_manager import PidFileManager
 from .process import ProcessManager
 from src.llama.utils.pid_tools import find_pid_by_port, is_process_running
-from src.llama.core.logger_manager import logger
+from src.llama.core.logger_manager import LoggerManager
 
 
 def execute_stop(force: bool = False) -> int:
@@ -26,7 +26,8 @@ def execute_stop(force: bool = False) -> int:
         PermissionError: 当权限不足时
         ProcessLookupError: 当目标进程不存在时
     """
-    logger.debug(f"Attempting to stop process, force={force}")
+    logger_instance = LoggerManager(debug=False)
+    # logger_instance.debug(f"Attempting to stop process, force={force}")
 
     # 使用 ProcessManager 来停止进程
     process_manager = ProcessManager(expected_cmd_keyword="llama.api.server")
@@ -38,8 +39,8 @@ def execute_stop(force: bool = False) -> int:
 
     # 如果通过PID文件方式未能停止，尝试通过端口查找并杀死进程
     if not success:
-        logger.info("PID file method failed, trying to kill by port...")
-        
+        logger_instance.info("PID file method failed, trying to kill by port...")
+
         # 尝试通过端口找到并杀死进程
         try:
             # 默认端口是31301，也可以从PID文件读取
@@ -47,23 +48,23 @@ def execute_stop(force: bool = False) -> int:
             port = 31301  # 默认端口
             if pid_data and pid_data.port:
                 port = pid_data.port
-                
-            logger.info(f"Looking for process on port {port}")
+
+            logger_instance.info(f"Looking for process on port {port}")
             pid = find_pid_by_port(port)
-            
+
             if pid:
-                logger.info(f"Found process with PID {pid} on port {port}")
-                
+                logger_instance.info(f"Found process with PID {pid} on port {port}")
+
                 if sys.platform == 'win32':
                     # Windows上使用taskkill命令
                     import subprocess
-                    result = subprocess.run(['taskkill', '/PID', str(pid), '/F'], 
+                    result = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
                                           capture_output=True, text=True)
                     if result.returncode == 0:
-                        logger.info(f"Successfully killed process {pid} on port {port}")
+                        logger_instance.info(f"Successfully killed process {pid} on port {port}")
                         success = True
                     else:
-                        logger.warning(f"Failed to kill process {pid}: {result.stderr}")
+                        logger_instance.warning(f"Failed to kill process {pid}: {result.stderr}")
                 else:
                     # Unix-like系统上使用kill命令
                     try:
@@ -71,30 +72,30 @@ def execute_stop(force: bool = False) -> int:
                             os.kill(pid, signal.SIGKILL)
                         else:
                             os.kill(pid, signal.SIGTERM)
-                        
+
                         # 等待进程结束
                         for _ in range(10):  # 等待最多10秒
                             if not is_process_running(pid):
-                                logger.info(f"Successfully killed process {pid} on port {port}")
+                                logger_instance.info(f"Successfully killed process {pid} on port {port}")
                                 success = True
                                 break
                             time.sleep(0.5)
                     except ProcessLookupError:
-                        logger.info(f"Process {pid} already terminated")
+                        logger_instance.info(f"Process {pid} already terminated")
                         success = True
                     except (OSError, PermissionError) as e:
-                        logger.warning(f"Permission error killing process {pid}: {e}")
+                        logger_instance.warning(f"Permission error killing process {pid}: {e}")
             else:
-                logger.info(f"No process found on port {port}")
-                
+                logger_instance.info(f"No process found on port {port}")
+
         except Exception as e:
-            logger.error(f"Error during port-based process termination: {e}")
+            logger_instance.error(f"Error during port-based process termination: {e}")
 
     if success:
-        logger.info("Server stopped successfully.")
+        logger_instance.info("Server stopped successfully.")
         return 0
     else:
-        logger.warning("Server was not running or could not be stopped.")
+        logger_instance.warning("Server was not running or could not be stopped.")
         return 0  # 即使服务未运行，也算作成功停止
 
 
@@ -106,9 +107,13 @@ def stop(force: bool, verbose: bool):
     # 如果verbose标志为真，启用调试模式
     if verbose:
         # 设置logger的调试模式
-        global logger
         from src.llama.core.logger_manager import LoggerManager
+        global logger
         logger = LoggerManager(debug=True)
+    else:
+        # 导入默认的logger实例
+        from src.llama.core.logger_manager import logger as default_logger
+        logger = default_logger
 
     try:
         # Execute stop command

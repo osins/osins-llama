@@ -231,12 +231,12 @@ class GuardianService:
             
             # 启动新进程
             self.process_manager.start(pid_data)
-            
+
             # 更新重启统计
             self.restart_count += 1
             self.last_restart_time = time.time()
-            
-            self.logger.info(f"Service restarted successfully, PID: {pid_data.pid}")
+
+            self.logger.info(f"Service restarted successfully on {pid_data.host}:{pid_data.port}")
             
         except Exception as e:
             self.logger.error(f"Failed to restart service: {e}")

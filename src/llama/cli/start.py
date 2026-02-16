@@ -410,9 +410,8 @@ def start(
 
         pid_manager = PidFileManager()
 
-        # Prepare PID data with current process PID
+        # Prepare PID data without PID field
         pid_data = PidData(
-            pid=None,  # Use current process PID temporarily
             model_path=str(config.model_path) if config.model_path else None,
             host=config.host,
             port=config.port,

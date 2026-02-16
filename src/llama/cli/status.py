@@ -38,7 +38,7 @@ def execute_status(debug: bool = False) -> int:
             if not pid_data or not pid_data.port:
                 logger.info("Service does not exist")
                 return 1
-            
+
             port = pid_data.port
             host = pid_data.host or 'localhost'
         except Exception as e:

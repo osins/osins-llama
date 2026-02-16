@@ -3,8 +3,7 @@ from typing import Optional
 
 @dataclass
 class PidData:
-    """PID file data model"""
-    pid: int
+    """PID file data model - now without PID field"""
     model_path: Optional[str] = None
     host: Optional[str] = None
     port: Optional[int] = None

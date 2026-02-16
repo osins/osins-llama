@@ -107,14 +107,11 @@ class PidFileManager:
     # ==========================================================
 
     def _validate_pid_data(self, data: dict) -> None:
-        required_fields = ["pid", "host", "port"]
+        required_fields = ["host", "port"]
 
         for field in required_fields:
             if field not in data:
                 raise PidFileError(f"Missing required field: {field}")
-
-        if not isinstance(data["pid"], int) or data["pid"] <= 0:
-            raise PidFileError("Invalid pid")
 
         if not isinstance(data["host"], str) or not data["host"]:
             raise PidFileError("Invalid host")
@@ -167,11 +164,11 @@ class PidFileManager:
 
         # 检查是否有意外的额外字段（除了内部使用的 _hash）
         allowed_fields = set([
-            "pid", "model_path", "host", "port", "n_ctx", "n_threads",
+            "model_path", "host", "port", "n_ctx", "n_threads",
             "api_keys", "max_concurrent_requests", "rate_limit_requests",
             "rate_limit_window", "debug", "format_version", "_hash"
         ])
-        
+
         unexpected_fields = set(data.keys()) - allowed_fields
         if unexpected_fields:
             raise PidFileError(f"Unexpected fields in PID data: {unexpected_fields}")
@@ -418,7 +415,7 @@ class PidFileManager:
                 self._validate_pid_data(original_data)
 
             pid_data = PidData(**original_data)
-            self.logger.info(f"Read PID from file: {pid_data.pid}")
+            self.logger.info(f"Read data from file: host={pid_data.host}, port={pid_data.port}")
             return pid_data
 
     # ==========================================================
@@ -504,12 +501,8 @@ class PidFileManager:
     # ==========================================================
 
     def get_pid(self) -> Optional[int]:
-        try:
-            pid_data = self.read(validate=True)
-            return pid_data.pid if pid_data else None
-        except PidFileError as e:
-            self.logger.warning(f"[GET_PID] Failed to read PID from {self.pid_file_path}: {str(e)}")
-            return None
+        # Since PID field has been removed, this method now always returns None
+        return None
 
     # ==========================================================
     # 构造命令
@@ -565,32 +558,9 @@ class PidFileManager:
             return None
 
     # ==========================================================
-    # 更新 PID
+    # 更新 PID - 现在已废弃
     # ==========================================================
 
     def set_pid(self, pid: int) -> None:
-        if not isinstance(pid, int) or pid <= 0:
-            raise ValueError("Invalid pid")
-
-        with self._acquire_lock(write=True):
-            pid_data = self.read()
-
-            if not pid_data:
-                # 自动初始化空 PidData 对象并写入默认值
-                from src.llama.models.pid_data import PidData
-                pid_data = PidData(
-                    pid=pid,
-                    model_path=None,
-                    host='0.0.0.0',
-                    port=31301,
-                    n_ctx=2048,
-                    n_threads=8,
-                    api_keys=None,
-                    max_concurrent_requests=10,
-                    rate_limit_requests=60,
-                    rate_limit_window=60,
-                    debug=False
-                )
-
-            pid_data.pid = pid
-            self.write(pid_data)
+        # Since PID field has been removed, this method is now deprecated
+        pass

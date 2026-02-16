@@ -57,9 +57,8 @@ class ProcessManager:
         
         self.logger.info(f"Started server process with PID: {process.pid}")
 
-        # 立即写入PID文件，使用启动进程的PID
+        # 写入PID文件，不包含PID字段
         if pid_data:
-            pid_data.pid = process.pid
             self.pid_manager.write(pid_data)
 
         # 等待服务器启动并获取实际监听端口的PID
@@ -77,12 +76,8 @@ class ProcessManager:
             # 处理PID查找结果
             if actual_pid:
                 self.logger.info(f"Found actual server process PID: {actual_pid}")
-                # 根据需要决定是否更新PID文件中的PID
-                # 如果需要使用实际服务器PID，请取消下面几行的注释
-                # pid_data.pid = actual_pid
-                # self.pid_manager.write(pid_data)
             if not actual_pid:
-                self.logger.warning(f"Could not find actual server PID for port {pid_data.port}, using initial PID: {process.pid}")
+                self.logger.warning(f"Could not find actual server PID for port {pid_data.port}")
 
         return process
 
@@ -103,9 +98,8 @@ class ProcessManager:
         
         self.logger.info(f"Started server process with PID: {process.pid}")
 
-        # 立即写入PID文件
+        # 写入PID文件，不包含PID字段
         if pid_data:
-            pid_data.pid = process.pid
             self.pid_manager.write(pid_data)
 
         # ⚠️ 守护模式不等待端口，立即返回
@@ -113,24 +107,20 @@ class ProcessManager:
 
     def stop(self):
         """停止服务器进程"""
-        # 通过pid_manager获取PID
+        # 通过pid_manager获取PID数据
         pid_data = self.pid_manager.read(validate=True)
-        
-        # 首先尝试从PID文件获取PID
-        pids_to_kill = []
-        if pid_data and pid_data.pid:
-            pids_to_kill.append(pid_data.pid)
 
-        # 尝试通过端口查找可能的进程（即使PID文件中没有PID）
+        # 尝试通过端口查找可能的进程
+        pids_to_kill = []
         if pid_data and pid_data.port:
             port_pid = find_pid_by_port(pid_data.port)
-            if port_pid and port_pid not in pids_to_kill:
+            if port_pid:
                 pids_to_kill.append(port_pid)
                 logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
         else:
             # 尝试默认端口
             default_port_pid = find_pid_by_port(31301)
-            if default_port_pid and default_port_pid not in pids_to_kill:
+            if default_port_pid:
                 pids_to_kill.append(default_port_pid)
                 logger.info(f"Found process {default_port_pid} on default port 31301, adding to kill list")
 
@@ -176,24 +166,20 @@ class ProcessManager:
 
     def force_kill(self):
         """强制杀死服务器进程"""
-        # 通过pid_manager获取PID
+        # 通过pid_manager获取PID数据
         pid_data = self.pid_manager.read(validate=True)
-        
-        # 首先尝试从PID文件获取PID
-        pids_to_kill = []
-        if pid_data and pid_data.pid:
-            pids_to_kill.append(pid_data.pid)
 
-        # 尝试通过端口查找可能的进程（即使PID文件中没有PID）
+        # 尝试通过端口查找可能的进程
+        pids_to_kill = []
         if pid_data and pid_data.port:
             port_pid = find_pid_by_port(pid_data.port)
-            if port_pid and port_pid not in pids_to_kill:
+            if port_pid:
                 pids_to_kill.append(port_pid)
                 logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
         else:
             # 尝试默认端口
             default_port_pid = find_pid_by_port(31301)
-            if default_port_pid and default_port_pid not in pids_to_kill:
+            if default_port_pid:
                 pids_to_kill.append(default_port_pid)
                 logger.info(f"Found process {default_port_pid} on default port 31301, adding to kill list")
 
@@ -243,33 +229,24 @@ class ProcessManager:
     def status(self):
         """检查服务器进程状态"""
         pid_data = self.pid_manager.read(validate=True)
-        if not pid_data or not pid_data.pid:
+        if not pid_data or not pid_data.port:
             return {"running": False, "pid": None}
 
-        pid = pid_data.pid
+        port = pid_data.port
         try:
-            if sys.platform == 'win32':
-                # Windows-specific process check using tasklist
-                import subprocess
-                result = subprocess.run(
-                    ['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV'],
-                    capture_output=True,
-                    text=True
-                )
-                process_exists = f'"{pid}"' in result.stdout
-            else:
-                # Unix-specific process check
-                os.kill(pid, 0)
-                process_exists = True
-
-            if process_exists:
-                return {"running": True, "pid": pid}
+            # 尝试通过端口查找进程
+            port_pid = find_pid_by_port(port)
+            
+            if port_pid:
+                # 进程存在，返回状态信息
+                return {"running": True, "pid": port_pid}
             else:
                 # 进程不存在，清理PID文件
                 self.pid_manager.delete()
                 return {"running": False, "pid": None}
-        except (OSError, subprocess.SubprocessError):
-            # 进程不存在或检查失败，清理PID文件
+        except Exception as e:
+            # 检查失败，清理PID文件
+            self.logger.warning(f"Error checking process status: {e}")
             self.pid_manager.delete()
             return {"running": False, "pid": None}
 
@@ -285,11 +262,16 @@ class ProcessManager:
     def get_process_info(self):
         """获取进程详细信息"""
         pid_data = self.pid_manager.read(validate=True)
-        if not pid_data or not pid_data.pid:
+        if not pid_data or not pid_data.port:
             return None
 
         try:
-            process = psutil.Process(pid_data.pid)
+            # 通过端口查找进程
+            port_pid = find_pid_by_port(pid_data.port)
+            if not port_pid:
+                return None
+            
+            process = psutil.Process(port_pid)
             info = {
                 'pid': process.pid,
                 'name': process.name(),
