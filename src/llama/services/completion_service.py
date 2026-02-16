@@ -225,15 +225,6 @@ class CompletionService:
             except Exception as e:
                 raise ServiceError(f"Model generation failed: {str(e)}")
 
-            # 构造响应对象
-            response_obj = CompletionResponse(
-                id=f"cmpl-{uuid.uuid4().hex}",
-                created=int(start_time),
-                model=request.model,
-                choices=[],  # 后续填充
-                usage=None  # 后续填充
-            )
-
             # 解析模型响应
             choices = []
             if "choices" in response and isinstance(response["choices"], list):
@@ -241,12 +232,19 @@ class CompletionService:
                     # 验证choice格式
                     if not isinstance(choice, dict):
                         raise ServiceError(f"Invalid choice format at index {idx}")
-                    
+
                     # 构造选择项
                     from src.llama.models.legacy.completion_choice import CompletionChoice
                     from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
 
-                    finish_reason = choice.get("finish_reason", "stop")
+                    finish_reason_str = choice.get("finish_reason", "stop")
+                    # 将字符串转换为枚举值
+                    try:
+                        finish_reason = CompletionFinishReason(finish_reason_str)
+                    except ValueError:
+                        # 如果不是有效的枚举值，默认为stop
+                        finish_reason = CompletionFinishReason.STOP
+                        
                     text = choice.get("text", "")
 
                     logprobs = choice.get("logprobs", None)
@@ -258,8 +256,6 @@ class CompletionService:
                     )
                     choices.append(completion_choice)
 
-            response_obj.choices = choices
-
             # 计算用量
             from src.llama.models.common.usage import Usage
             prompts = request.prompt if isinstance(request.prompt, list) else [request.prompt]
@@ -267,10 +263,19 @@ class CompletionService:
             completion_tokens = sum(count_tokens(choice.text) for choice in choices)
             total_tokens = prompt_tokens + completion_tokens
 
-            response_obj.usage = Usage(
+            usage = Usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens
+            )
+
+            # 构造响应对象，确保所有必需字段都有值
+            response_obj = CompletionResponse(
+                id=f"cmpl-{uuid.uuid4().hex}",
+                created=int(start_time),
+                model=request.model,
+                choices=choices,
+                usage=usage
             )
 
             return response_obj
