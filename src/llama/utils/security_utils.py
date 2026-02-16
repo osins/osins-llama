@@ -126,8 +126,7 @@ def validate_json_config(path: Path) -> None:
         sensitive_fields = detect_sensitive_fields(data)
         if sensitive_fields:
             # 这里可以选择记录警告而不是抛出错误，取决于安全策略
-            import logging
-            logger = logging.getLogger(__name__)
+            from src.llama.core.logger_manager import logger
             logger.warning(f"Config {path} contains potentially sensitive fields: {sensitive_fields}")
             
         # 验证JWT Token（如果存在）
@@ -186,8 +185,7 @@ def validate_yaml_config(path: Path) -> None:
         sensitive_fields = detect_sensitive_fields(data)
         if sensitive_fields:
             # 这里可以选择记录警告而不是抛出错误，取决于安全策略
-            import logging
-            logger = logging.getLogger(__name__)
+            from src.llama.core.logger_manager import logger
             logger.warning(f"Config {path} contains potentially sensitive fields: {sensitive_fields}")
             
         # 验证JWT Token（如果存在）

@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Optional, List
 import time
 import sys
-import logging
 import psutil
 from .exceptions import ProcessAlreadyRunning
 from .pid_file_manager import PidFileManager  # 修改导入路径
 from ..models.pid_data import PidData
 from ..utils.pid_tools import wait_for_port, find_pid_by_port, wait_for_pid_by_port
+from src.llama.core.logger_manager import logger
 
 
 class ProcessManager:
@@ -20,13 +20,7 @@ class ProcessManager:
     def __init__(self, expected_cmd_keyword: str, stop_timeout: int = 30):
         self.expected_cmd_keyword = expected_cmd_keyword
         self.stop_timeout = stop_timeout
-        self.logger = logging.getLogger("process")
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-        self.logger.setLevel(logging.INFO)
+        self.logger = logger
 
         # 创建 PidFileManager 实例，它会从环境变量获取 PID 文件路径
         self.pid_manager = PidFileManager()

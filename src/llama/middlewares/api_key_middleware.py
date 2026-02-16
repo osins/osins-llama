@@ -4,14 +4,14 @@ from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import time
-import logging
+from src.llama.core.logger_manager import logger
 
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, api_keys: list):
         super().__init__(app)
         self.api_keys = api_keys
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     async def dispatch(self, request: Request, call_next):
         # Log incoming request

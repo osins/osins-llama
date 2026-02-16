@@ -1,8 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import List
-import logging
-
-logger = logging.getLogger(__name__)
+from src.llama.core.logger_manager import logger
 
 
 class SecurityConfig(BaseModel):

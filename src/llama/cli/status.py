@@ -1,11 +1,11 @@
 """Status command for osins-llama server."""
 import click
 import requests  # type: ignore
-import logging
 import socket
 from pathlib import Path
 
 from .pid_file_manager import PidFileManager
+from src.llama.core.logger_manager import LoggerManager, logger
 
 
 def execute_status(debug: bool = False) -> int:
@@ -24,15 +24,11 @@ def execute_status(debug: bool = False) -> int:
             4: PID 文件内容非法
             5: 其他异常
     """
-    level = logging.DEBUG if debug else logging.INFO
-    logger = logging.getLogger("status")
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    logger.setLevel(level)
-    logger.propagate = False
+    # 如果需要调试模式，创建一个新的logger实例
+    if debug:
+        logger = LoggerManager(debug=True)
+    else:
+        from src.llama.core.logger_manager import logger
 
     try:
         # 使用 PidFileManager 读取 PID 数据

@@ -11,6 +11,7 @@ from .logs import logs
 from .health import health
 from .context import CLIContext
 from ..utils.security_utils import validate_config_path
+from src.llama.core.logger_manager import logger
 
 
 class CircularDependencyError(Exception):
@@ -141,8 +142,8 @@ def main(ctx: click.Context, verbose: bool, config: Optional[str]) -> None:
     ctx.obj = CLIContext(verbose=verbose, config_path=config_path)
 
     if verbose:
-        ctx.obj.logger.debug("Verbose mode enabled")
-        ctx.obj.logger.debug(f"Configuration file path: {config_path}")
+        logger.debug("Verbose mode enabled")
+        logger.debug(f"Configuration file path: {config_path}")
 
 
 # Register all commands

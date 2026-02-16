@@ -3,6 +3,7 @@ import click
 import requests
 import sys
 import re
+from src.llama.core.logger_manager import logger
 
 
 def validate_api_url(ctx, param, value):
@@ -10,12 +11,12 @@ def validate_api_url(ctx, param, value):
     # Check if URL has http or https protocol
     if not re.match(r'^https?://', value):
         raise click.BadParameter(f"URL must use http or https protocol: {value}")
-    
+
     # Check if URL has a valid hostname
     url_pattern = r'^https?://([a-zA-Z0-9.-]+)(:[0-9]+)?(/.*)?$'
     if not re.match(url_pattern, value):
         raise click.BadParameter(f"Invalid URL format: {value}")
-    
+
     return value
 
 
@@ -28,23 +29,23 @@ def validate_timeout(ctx, param, value):
 
 @click.command()
 @click.option(
-    '--api-url', 
-    default='http://localhost:31301', 
+    '--api-url',
+    default='http://localhost:31301',
     help='Target API URL, protocol must be http or https',
     callback=validate_api_url
 )
 @click.option(
-    '--timeout', 
-    default=30, 
-    type=int, 
+    '--timeout',
+    default=30,
+    type=int,
     help='Request timeout in seconds (1-300)',
     callback=validate_timeout
 )
 @click.pass_context
 def health(ctx, api_url: str, timeout: int):
     """Perform health check on the server."""
-    # Get logger from context
-    logger = ctx.obj.logger
+    # Use the global logger instance
+    pass
     
     try:
         logger.info(f"Performing health check on {api_url} with timeout {timeout}s")

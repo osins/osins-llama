@@ -1,12 +1,12 @@
 """Stop command for osins-llama server."""
 import click
-import logging
 import signal
 import os
 import sys
 import time
 from .pid_file_manager import PidFileManager
 from .process import ProcessManager
+from src.llama.core.logger_manager import logger
 
 
 def execute_stop(force: bool = False) -> int:
@@ -24,8 +24,6 @@ def execute_stop(force: bool = False) -> int:
         PermissionError: 当权限不足时
         ProcessLookupError: 当目标进程不存在时
     """
-    logger = logging.getLogger(__name__)
-
     logger.debug(f"Attempting to stop process, force={force}")
 
     # 使用 ProcessManager 来停止进程
@@ -49,23 +47,12 @@ def execute_stop(force: bool = False) -> int:
 @click.option('--verbose', is_flag=True, help='Enable verbose logging')
 def stop(force: bool, verbose: bool):
     """Stop the running osins-llama server instance."""
-    # 设置日志级别
-    logger = logging.getLogger(__name__)
-    handler = logging.StreamHandler()
+    # 如果verbose标志为真，启用调试模式
     if verbose:
-        logger.setLevel(logging.DEBUG)
-        handler.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-        handler.setLevel(logging.INFO)
-
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    # 仅当logger尚未配置handler时添加，避免重复日志
-    if not logger.handlers:
-        logger.addHandler(handler)
-    # 防止向上级传播日志
-    logger.propagate = False
+        # 设置logger的调试模式
+        global logger
+        from src.llama.core.logger_manager import LoggerManager
+        logger = LoggerManager(debug=True)
 
     try:
         # Execute stop command

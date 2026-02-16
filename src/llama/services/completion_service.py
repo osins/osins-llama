@@ -51,10 +51,9 @@ class CompletionService:
         Raises:
             ValueError: 参数验证失败时抛出
         """
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.llama.core.logger_manager import logger
         logger.info("_validate_request called")
-        
+
         # 验证模型名称
         if not request.model or len(request.model.strip()) == 0:
             logger.error("Model name is required")
@@ -133,7 +132,7 @@ class CompletionService:
             if freq_penalty < -2.0 or freq_penalty > 2.0:
                 logger.error(f"frequency_penalty must be between -2.0 and 2.0, got: {freq_penalty}")
                 raise ValueError("frequency_penalty must be between -2.0 and 2.0")
-        
+
         logger.info("All validations passed")
 
     async def generate(self, request: CompletionRequest) -> CompletionResponse:
@@ -146,10 +145,9 @@ class CompletionService:
         Returns:
             CompletionResponse: 完整的响应对象
         """
-        import logging
-        logger = logging.getLogger(__name__)
+        from src.llama.core.logger_manager import logger
         logger.info("CompletionService.generate called")
-        
+
         try:
             # 验证请求参数
             self._validate_request(request)

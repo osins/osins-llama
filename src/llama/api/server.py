@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-import logging
 import sys
 import argparse
 from typing import Optional
@@ -101,8 +100,11 @@ def start_server(config: Config):
     print(f"Access the API at: http://{config.service.host}:{config.service.port}")
     print(f"API documentation available at: http://{config.service.host}:{config.service.port}/docs")
 
-    # Configure logging
-    logging.basicConfig(level=logging.INFO if not config.service.debug else logging.DEBUG)
+    # Import and use the new logger manager
+    from src.llama.core.logger_manager import logger
+    # Set debug mode based on config
+    if config.service.debug:
+        logger.debug = lambda msg, *args, **kwargs: logger.logger.debug(msg, *args, **kwargs)
 
     # Start the server
     uvicorn.run(

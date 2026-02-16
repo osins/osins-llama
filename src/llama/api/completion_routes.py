@@ -2,8 +2,6 @@ from fastapi import APIRouter, Depends, Request
 from typing import AsyncGenerator
 import asyncio
 import time
-import logging
-
 from src.llama.models.legacy.completion_request import CompletionRequest
 from src.llama.models.legacy.completion_response import CompletionResponse
 from src.llama.models.common.stream_chunk import StreamChunk
@@ -17,7 +15,7 @@ from src.llama.utils.token_utils import count_tokens
 from src.llama.exceptions import ValidationError, RateLimitError, ServiceError, AuthenticationError
 
 
-logger = logging.getLogger(__name__)
+from src.llama.core.logger_manager import logger
 
 router = APIRouter()
 
@@ -26,8 +24,7 @@ def get_completion_service(request: Request) -> CompletionService:
     """
     Dependency to get CompletionService with the app's config
     """
-    import logging
-    logger = logging.getLogger(__name__)
+    from src.llama.core.logger_manager import logger
     logger.info("get_completion_service dependency called")
     config = getattr(request.app.state, 'config', None)
     logger.info(f"Retrieved config from app.state: {config is not None}")
@@ -35,22 +32,19 @@ def get_completion_service(request: Request) -> CompletionService:
 
 
 def get_api_key(request: Request):
-    import logging
-    logger = logging.getLogger(__name__)
+    from src.llama.core.logger_manager import logger
     logger.info("get_api_key dependency called")
     return verify_api_key(request=request)
 
 
 def get_rate_limiter_dep(request: Request):
-    import logging
-    logger = logging.getLogger(__name__)
+    from src.llama.core.logger_manager import logger
     logger.info("get_rate_limiter_dep dependency called")
     return get_rate_limiter(request)
 
 
 def get_concurrency_controller_dep(request: Request):
-    import logging
-    logger = logging.getLogger(__name__)
+    from src.llama.core.logger_manager import logger
     logger.info("get_concurrency_controller_dep dependency called")
     return get_concurrency_controller(request)
 
@@ -181,7 +175,6 @@ async def legacy_completion(
     Legacy completion endpoint for compatibility with older clients
     Maps to the same functionality as /v1/completions
     """
-    import logging
-    logger = logging.getLogger(__name__)
+    from src.llama.core.logger_manager import logger
     logger.info(f"Route handler reached for /completion, model: {request.model}")
     return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)

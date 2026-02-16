@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Request
 from typing import AsyncGenerator
 import asyncio
 import time
-import logging
 
 from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
 from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
@@ -17,7 +16,7 @@ from src.llama.utils.token_utils import count_tokens_in_messages
 from src.llama.exceptions import ValidationError, RateLimitError, ServiceError, AuthenticationError
 
 
-logger = logging.getLogger(__name__)
+from src.llama.core.logger_manager import logger
 
 router = APIRouter()
 

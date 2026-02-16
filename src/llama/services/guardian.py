@@ -4,7 +4,6 @@ import sys
 import time
 import signal
 import json
-import logging
 import subprocess
 import threading
 import queue
@@ -17,7 +16,7 @@ from ..cli.process import ProcessManager
 from ..cli.pid_file_manager import PidFileManager
 from ..models.pid_data import PidData
 from ..utils.pid_tools import is_process_running
-from ..utils.logger import setup_logger
+from src.llama.core.logger_manager import logger
 
 
 class GuardianConfig:
@@ -77,13 +76,8 @@ class GuardianService:
     
     def __init__(self, config_path: Optional[str] = None):
         self.config = GuardianConfig(config_path)
-        self.logger = setup_logger(
-            name='guardian',
-            log_file=self.config.log_file,
-            level=getattr(logging, self.config.log_level.upper()),
-            max_bytes=self.config.log_max_bytes,
-            backup_count=self.config.log_backup_count
-        )
+        # 使用全局logger实例，不再使用setup_logger
+        self.logger = logger
         self.running = False
         self.process_manager = ProcessManager(expected_cmd_keyword="llama.api.server")
         self.pid_manager = PidFileManager()

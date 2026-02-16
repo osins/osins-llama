@@ -1,23 +1,15 @@
 """Config command for osins-llama server."""
 import json
-import logging
 import sys
 from pathlib import Path
 import click
 from typing import Optional
 
 from ..utils.security_utils import validate_config_path
+from src.llama.core.logger_manager import logger
 
 
 CONFIG_FILE = Path("./llama_config.json")
-logger = logging.getLogger("config")
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
-logger.propagate = False
 
 
 def load_config(config_path: Path = None) -> dict:

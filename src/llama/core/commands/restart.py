@@ -5,14 +5,9 @@ import signal
 import psutil
 import time
 import socket
-import logging
 from pathlib import Path
 from typing import Optional
-
-
-# 设置日志记录
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from src.llama.core.logger_manager import logger
 
 
 def get_platform_lock(lock_file_path: Path, max_retries: int = 5, retry_delay: float = 0.1):
@@ -245,7 +240,6 @@ def restart(
 ):
     """Restart the LLM service with safe stop and start logic."""
     if debug:
-        logger.setLevel(logging.DEBUG)
         logger.debug("Debug mode enabled")
     
     pid_file_path = Path(pid_file)

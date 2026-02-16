@@ -7,8 +7,8 @@ from typing import Callable, Awaitable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
-import logging
 import json
+from src.llama.core.logger_manager import logger
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -18,26 +18,15 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     注意：不记录敏感信息如prompt原文
     """
 
-    def __init__(self, app, logger: logging.Logger = None):
+    def __init__(self, app):
         """
         初始化日志中间件
 
         Args:
             app: FastAPI应用实例
-            logger: 日志记录器实例
         """
         super().__init__(app)
-        self.logger = logger or logging.getLogger(__name__)
-
-        # 设置日志格式
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
+        self.logger = logger
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[StarletteResponse]]) -> StarletteResponse:
         """
@@ -185,11 +174,5 @@ def setup_logging_config():
     """
     设置日志配置
     """
-    # 配置根日志记录器
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-        ]
-    )
+    # 使用全局logger实例
+    pass  # logger_manager已经初始化过了，不需要额外配置

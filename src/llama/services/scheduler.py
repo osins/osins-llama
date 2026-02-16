@@ -5,9 +5,7 @@ import time
 from typing import Callable, Any, Optional
 from asyncio import Semaphore
 from src.llama.config.config import Config
-import logging
-
-logger = logging.getLogger(__name__)
+from src.llama.core.logger_manager import logger
 
 
 class RequestScheduler:

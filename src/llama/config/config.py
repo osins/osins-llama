@@ -2,14 +2,11 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
-import logging
 from .model_config import ModelConfig
 from .resources_config import ResourcesConfig
 from .security_config import SecurityConfig
 from .service_config import ServiceConfig
-
-
-logger = logging.getLogger(__name__)
+from src.llama.core.logger_manager import logger
 
 
 class Config(BaseModel):
