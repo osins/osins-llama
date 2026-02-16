@@ -35,9 +35,15 @@ class RateLimiter:
         return True
 
 
-def get_rate_limiter():
+from fastapi import Request
+
+
+def get_rate_limiter(request: Request):
     """
     获取速率限制器
     """
-    config = Config.from_env()
+    # Try to get config from app state first, fall back to environment
+    config = getattr(request.app.state, 'config', None)
+    if config is None:
+        config = Config.from_env()
     return RateLimiter(config)

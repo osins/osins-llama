@@ -1,4 +1,5 @@
 from typing import AsyncGenerator
+from fastapi import Request
 from src.llama.models.legacy.completion_request import CompletionRequest
 from src.llama.models.legacy.completion_response import CompletionResponse
 from src.llama.models.common.stream_chunk import StreamChunk
@@ -20,7 +21,12 @@ class CompletionService:
     _instance = None
 
     def __init__(self, config: Config = None):
-        self.config = config or Config.from_env()
+        # If no config is provided, try to get it from the app state
+        # This avoids re-loading config from environment when running inside the API server
+        self.config = config
+        if self.config is None:
+            # Fallback to environment if not running in API server context
+            self.config = Config.from_env()
         self.model_manager = ModelManager.get_instance(self.config)
 
     @classmethod
@@ -30,6 +36,9 @@ class CompletionService:
         """
         if cls._instance is None:
             cls._instance = cls(config)
+        elif config is not None:
+            # If a config is provided and instance already exists, update the config
+            cls._instance.config = config
         return cls._instance
 
     def _validate_request(self, request: CompletionRequest):
@@ -42,57 +51,90 @@ class CompletionService:
         Raises:
             ValueError: 参数验证失败时抛出
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("_validate_request called")
+        
         # 验证模型名称
         if not request.model or len(request.model.strip()) == 0:
+            logger.error("Model name is required")
             raise ValueError("Model name is required")
+
+        logger.info(f"Model validation passed: {request.model}")
 
         # 验证prompt
         if request.prompt is None:
+            logger.error("Prompt is required")
             raise ValueError("Prompt is required")
+
+        logger.info(f"Prompt is not None, type: {type(request.prompt)}")
 
         if isinstance(request.prompt, str):
             if len(request.prompt.strip()) == 0:
+                logger.error("Prompt cannot be empty")
                 raise ValueError("Prompt cannot be empty")
         elif isinstance(request.prompt, list):
             if len(request.prompt) == 0:
+                logger.error("Prompt list cannot be empty")
                 raise ValueError("Prompt list cannot be empty")
             for i, p in enumerate(request.prompt):
                 if not isinstance(p, str) or len(p.strip()) == 0:
+                    logger.error(f"Prompt at index {i} cannot be empty")
                     raise ValueError(f"Prompt at index {i} cannot be empty")
+
+        logger.info("Prompt validation passed")
 
         # 验证max_tokens
         if request.max_tokens is not None and request.max_tokens <= 0:
+            logger.error(f"max_tokens must be positive, got: {request.max_tokens}")
             raise ValueError("max_tokens must be positive")
+
+        logger.info(f"max_tokens validation passed: {request.max_tokens}")
 
         # 验证temperature
         if request.temperature is not None:
             temp = request.temperature
             if temp < 0.0 or temp > 2.0:
+                logger.error(f"temperature must be between 0.0 and 2.0, got: {temp}")
                 raise ValueError("temperature must be between 0.0 and 2.0")
+
+        logger.info(f"temperature validation passed: {request.temperature}")
 
         # 验证top_p
         if request.top_p is not None:
             topp = request.top_p
             if topp <= 0.0 or topp > 1.0:
+                logger.error(f"top_p must be between 0.0 and 1.0, got: {topp}")
                 raise ValueError("top_p must be between 0.0 and 1.0")
+
+        logger.info(f"top_p validation passed: {request.top_p}")
 
         # 验证n
         if request.n is not None:
             n_val = request.n
             if n_val <= 0 or n_val > 128:
+                logger.error(f"n must be between 1 and 128, got: {n_val}")
                 raise ValueError("n must be between 1 and 128")
+
+        logger.info(f"n validation passed: {request.n}")
 
         # 验证presence_penalty
         if request.presence_penalty is not None:
             penalty = request.presence_penalty
             if penalty < -2.0 or penalty > 2.0:
+                logger.error(f"presence_penalty must be between -2.0 and 2.0, got: {penalty}")
                 raise ValueError("presence_penalty must be between -2.0 and 2.0")
+
+        logger.info(f"presence_penalty validation passed: {request.presence_penalty}")
 
         # 验证frequency_penalty
         if request.frequency_penalty is not None:
             freq_penalty = request.frequency_penalty
             if freq_penalty < -2.0 or freq_penalty > 2.0:
+                logger.error(f"frequency_penalty must be between -2.0 and 2.0, got: {freq_penalty}")
                 raise ValueError("frequency_penalty must be between -2.0 and 2.0")
+        
+        logger.info("All validations passed")
 
     async def generate(self, request: CompletionRequest) -> CompletionResponse:
         """
@@ -104,9 +146,14 @@ class CompletionService:
         Returns:
             CompletionResponse: 完整的响应对象
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("CompletionService.generate called")
+        
         try:
             # 验证请求参数
             self._validate_request(request)
+            logger.info("Request validation passed")
 
             # 获取模型实例
             model = self.model_manager.get_model()
@@ -136,21 +183,43 @@ class CompletionService:
                 prompt = request.prompt[0] if request.prompt else ""
 
             try:
-                response = model(
-                    prompt=prompt,
-                    max_tokens=request.max_tokens or 16,
-                    temperature=request.temperature or 1.0,
-                    top_p=request.top_p or 1.0,
-                    n=request.n or 1,
-                    stream=False,  # 非流式
-                    logprobs=request.logprobs,
-                    echo=request.echo or False,
-                    stop=request.stop,
-                    presence_penalty=request.presence_penalty or 0.0,
-                    frequency_penalty=request.frequency_penalty or 0.0,
-                    best_of=request.best_of or 1,
-                    logit_bias=request.logit_bias
-                )
+                # 构建模型调用参数字典，只包含支持的参数
+                model_kwargs = {
+                    "prompt": prompt,
+                    "max_tokens": request.max_tokens or request.max_new_tokens or 16,
+                    "temperature": request.temperature or 1.0,
+                    "top_p": request.top_p or 1.0,
+                    "top_k": request.top_k or 40,
+                    "stream": False,  # 非流式
+                    "logprobs": request.logprobs,
+                    "echo": request.echo or False,
+                    "stop": request.stop,
+                    "presence_penalty": request.presence_penalty or 0.0,
+                    "frequency_penalty": request.frequency_penalty or 0.0,
+                    "logit_bias": request.logit_bias
+                }
+                
+                # 添加其他可选参数，如果它们存在的话
+                if request.n is not None:
+                    model_kwargs["n"] = request.n
+                if request.best_of is not None:
+                    model_kwargs["best_of"] = request.best_of
+                if request.repetition_penalty is not None:
+                    model_kwargs["repetition_penalty"] = request.repetition_penalty
+                if request.min_p is not None:
+                    model_kwargs["min_p"] = request.min_p
+                if request.typical_p is not None:
+                    model_kwargs["typical_p"] = request.typical_p
+                if request.tfs is not None:
+                    model_kwargs["tfs"] = request.tfs
+                if request.mirostat_mode is not None:
+                    model_kwargs["mirostat_mode"] = request.mirostat_mode
+                if request.mirostat_tau is not None:
+                    model_kwargs["mirostat_tau"] = request.mirostat_tau
+                if request.mirostat_eta is not None:
+                    model_kwargs["mirostat_eta"] = request.mirostat_eta
+                
+                response = model(**model_kwargs)
                 
                 # 验证响应格式
                 if not isinstance(response, dict) or "choices" not in response:
@@ -258,21 +327,43 @@ class CompletionService:
             try:
                 # 由于llama-cpp-python的流式功能，我们模拟流式响应
                 # 实际应用中，这里应该是真正的流式生成
-                response_generator = model(
-                    prompt=prompt,
-                    max_tokens=request.max_tokens or 16,
-                    temperature=request.temperature or 1.0,
-                    top_p=request.top_p or 1.0,
-                    n=request.n or 1,
-                    stream=True,  # 流式
-                    logprobs=request.logprobs,
-                    echo=request.echo or False,
-                    stop=request.stop,
-                    presence_penalty=request.presence_penalty or 0.0,
-                    frequency_penalty=request.frequency_penalty or 0.0,
-                    best_of=request.best_of or 1,
-                    logit_bias=request.logit_bias
-                )
+                # 构建模型调用参数字典，只包含支持的参数
+                model_kwargs = {
+                    "prompt": prompt,
+                    "max_tokens": request.max_tokens or request.max_new_tokens or 16,
+                    "temperature": request.temperature or 1.0,
+                    "top_p": request.top_p or 1.0,
+                    "top_k": request.top_k or 40,
+                    "stream": True,  # 流式
+                    "logprobs": request.logprobs,
+                    "echo": request.echo or False,
+                    "stop": request.stop,
+                    "presence_penalty": request.presence_penalty or 0.0,
+                    "frequency_penalty": request.frequency_penalty or 0.0,
+                    "logit_bias": request.logit_bias
+                }
+                
+                # 添加其他可选参数，如果它们存在的话
+                if request.n is not None:
+                    model_kwargs["n"] = request.n
+                if request.best_of is not None:
+                    model_kwargs["best_of"] = request.best_of
+                if request.repetition_penalty is not None:
+                    model_kwargs["repetition_penalty"] = request.repetition_penalty
+                if request.min_p is not None:
+                    model_kwargs["min_p"] = request.min_p
+                if request.typical_p is not None:
+                    model_kwargs["typical_p"] = request.typical_p
+                if request.tfs is not None:
+                    model_kwargs["tfs"] = request.tfs
+                if request.mirostat_mode is not None:
+                    model_kwargs["mirostat_mode"] = request.mirostat_mode
+                if request.mirostat_tau is not None:
+                    model_kwargs["mirostat_tau"] = request.mirostat_tau
+                if request.mirostat_eta is not None:
+                    model_kwargs["mirostat_eta"] = request.mirostat_eta
+                
+                response_generator = model(**model_kwargs)
             except Exception as e:
                 raise ServiceError(f"Model generation failed: {str(e)}")
 

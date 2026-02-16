@@ -22,18 +22,53 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/v1/completions", response_model=CompletionResponse)
-async def create_completion(
+def get_completion_service(request: Request) -> CompletionService:
+    """
+    Dependency to get CompletionService with the app's config
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("get_completion_service dependency called")
+    config = getattr(request.app.state, 'config', None)
+    logger.info(f"Retrieved config from app.state: {config is not None}")
+    return CompletionService.get_instance(config)
+
+
+def get_api_key(request: Request):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("get_api_key dependency called")
+    return verify_api_key(request=request)
+
+
+def get_rate_limiter_dep(request: Request):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("get_rate_limiter_dep dependency called")
+    return get_rate_limiter(request)
+
+
+def get_concurrency_controller_dep(request: Request):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("get_concurrency_controller_dep dependency called")
+    return get_concurrency_controller(request)
+
+
+async def _handle_completion_request(
     request: CompletionRequest,
     req: Request,
-    service: CompletionService = Depends(CompletionService.get_instance),
-    api_key: str = Depends(verify_api_key),
-    rate_limiter = Depends(get_rate_limiter),
-    concurrency_ctrl = Depends(get_concurrency_controller)
+    service: CompletionService,
+    api_key: str,
+    rate_limiter,
+    concurrency_ctrl
 ):
     """
-    处理文本生成请求
+    处理文本生成请求的共享逻辑
     """
+    # 记录请求详情以便调试
+    logger.info(f"Received completion request: model={request.model}, prompt type={type(request.prompt)}, max_tokens={request.max_tokens}")
+
     client_ip = req.client.host if req.client else "unknown"
 
     if (not rate_limiter.is_allowed(client_ip)) is True:
@@ -45,8 +80,13 @@ async def create_completion(
         if api_key is None or api_key == "":
             raise AuthenticationError("Unauthorized: Invalid API key")
 
-        if (not hasattr(service, 'model') or service.model is None) is True:
+        logger.info("Authentication passed")
+        
+        # Check if model is loaded via model manager
+        model = service.model_manager.get_model()
+        if model is None:
             raise ServiceError("Model not loaded")
+        logger.info("Model check passed")
 
         total_prompt_tokens = 0
         if isinstance(request.prompt, str):
@@ -111,3 +151,37 @@ async def create_completion(
     finally:
         if not request.stream:
             await concurrency_ctrl.release()
+
+
+@router.post("/v1/completions", response_model=CompletionResponse)
+async def create_completion(
+    request: CompletionRequest,
+    req: Request,
+    service: CompletionService = Depends(get_completion_service),
+    api_key: str = Depends(get_api_key),
+    rate_limiter = Depends(get_rate_limiter_dep),
+    concurrency_ctrl = Depends(get_concurrency_controller_dep)
+):
+    """
+    处理文本生成请求
+    """
+    return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)
+
+
+@router.post("/completion", response_model=CompletionResponse)
+async def legacy_completion(
+    request: CompletionRequest,
+    req: Request,
+    service: CompletionService = Depends(get_completion_service),
+    api_key: str = Depends(get_api_key),
+    rate_limiter = Depends(get_rate_limiter_dep),
+    concurrency_ctrl = Depends(get_concurrency_controller_dep)
+):
+    """
+    Legacy completion endpoint for compatibility with older clients
+    Maps to the same functionality as /v1/completions
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Route handler reached for /completion, model: {request.model}")
+    return await _handle_completion_request(request, req, service, api_key, rate_limiter, concurrency_ctrl)

@@ -1,4 +1,5 @@
 from typing import AsyncGenerator
+from fastapi import Request
 from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
 from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
 from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
@@ -20,7 +21,12 @@ class ChatService:
     _instance = None
 
     def __init__(self, config: Config = None):
-        self.config = config or Config.from_env()
+        # If no config is provided, try to get it from the app state
+        # This avoids re-loading config from environment when running inside the API server
+        self.config = config
+        if self.config is None:
+            # Fallback to environment if not running in API server context
+            self.config = Config.from_env()
         self.model_manager = ModelManager.get_instance(self.config)
 
     @classmethod
@@ -30,6 +36,9 @@ class ChatService:
         """
         if cls._instance is None:
             cls._instance = cls(config)
+        elif config is not None:
+            # If a config is provided and instance already exists, update the config
+            cls._instance.config = config
         return cls._instance
 
     def _validate_request(self, request: ChatCompletionRequest):

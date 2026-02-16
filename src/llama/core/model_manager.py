@@ -2,7 +2,7 @@ from llama_cpp import Llama
 from pathlib import Path
 import threading
 from src.llama.config.config import Config
-
+import asyncio
 
 class ModelManager:
     """
@@ -69,3 +69,10 @@ class ModelManager:
             self.config.model.path = model_path
 
         self._load_model()
+        
+    async def stream_generate(self, prompt: str, max_tokens: int = 256):
+        if self.model is None:
+            raise RuntimeError("Model is not loaded")
+        for chunk in self.model.stream(prompt=prompt, max_tokens=max_tokens):
+            await asyncio.sleep(0)  # 保证异步调度
+            yield chunk.text

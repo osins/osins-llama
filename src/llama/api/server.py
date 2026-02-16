@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -6,6 +6,8 @@ import logging
 import sys
 import argparse
 from typing import Optional
+import json
+import asyncio
 
 from src.llama.api.completion_routes import router as completion_router
 from src.llama.api.chat_routes import router as chat_router
@@ -17,6 +19,7 @@ from src.llama.config.config import Config
 from src.llama.exceptions.service_error import ServiceError
 from src.llama.middlewares.rate_limit_middleware import RateLimitMiddleware
 from src.llama.middlewares.api_key_middleware import ApiKeyMiddleware
+from src.llama.middlewares.logging_middleware import LoggingMiddleware
 
 
 def create_app(config: Config):
@@ -33,6 +36,12 @@ def create_app(config: Config):
         redoc_url="/redoc"
     )
 
+    # Store the config in app state so it can be accessed by services
+    app.state.config = config
+
+    # Add logging middleware for debugging
+    app.add_middleware(LoggingMiddleware)
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -45,8 +54,8 @@ def create_app(config: Config):
     # Add security middlewares
     if config.security.api_keys:
         app.add_middleware(ApiKeyMiddleware, api_keys=config.security.api_keys)
-    
-    app.add_middleware(RateLimitMiddleware, 
+
+    app.add_middleware(RateLimitMiddleware,
                       rate_limit_requests=config.security.rate_limit_requests,
                       rate_limit_window=config.security.rate_limit_window)
 

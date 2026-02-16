@@ -22,14 +22,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def get_chat_service(request: Request) -> ChatService:
+    """
+    Dependency to get ChatService with the app's config
+    """
+    config = getattr(request.app.state, 'config', None)
+    return ChatService.get_instance(config)
+
+
+def get_api_key_chat(request: Request):
+    return verify_api_key(request=request)
+
+
+def get_rate_limiter_chat(request: Request):
+    return get_rate_limiter(request)
+
+
+def get_concurrency_controller_chat(request: Request):
+    return get_concurrency_controller(request)
+
+
 @router.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def create_chat_completion(
     request: ChatCompletionRequest,
     req: Request,
-    service: ChatService = Depends(ChatService.get_instance),
-    api_key: str = Depends(verify_api_key),
-    rate_limiter = Depends(get_rate_limiter),
-    concurrency_ctrl = Depends(get_concurrency_controller)
+    service: ChatService = Depends(get_chat_service),
+    api_key: str = Depends(get_api_key_chat),
+    rate_limiter = Depends(get_rate_limiter_chat),
+    concurrency_ctrl = Depends(get_concurrency_controller_chat)
 ):
     """
     处理聊天生成请求
@@ -45,7 +65,9 @@ async def create_chat_completion(
         if api_key is None or api_key == "":
             raise AuthenticationError("Unauthorized: Invalid API key")
 
-        if (not hasattr(service, 'model') or service.model is None) is True:
+        # Check if model is loaded via model manager
+        model = service.model_manager.get_model()
+        if model is None:
             raise ServiceError("Model not loaded")
 
         total_message_tokens = count_tokens_in_messages(request.messages)

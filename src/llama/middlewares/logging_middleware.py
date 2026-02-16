@@ -71,9 +71,47 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 api_key = auth_header[6:]
             else:
                 api_key = auth_header
-            
+
             # 对API密钥进行哈希处理，避免记录明文
             api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+
+        # 对于调试，特别关注 completion 和 chat 路由的请求体
+        if request.url.path in ["/v1/completions", "/completion", "/v1/chat/completions"]:
+            # 读取请求体用于调试，但要确保它可以被后续处理程序再次读取
+            body = await request.body()
+            if body:
+                try:
+                    body_json = json.loads(body.decode('utf-8'))
+                    # 仅记录非敏感字段，如模型名称和提示长度
+                    model_name = body_json.get('model', 'unknown')
+                    prompt_info = 'provided' if 'prompt' in body_json or 'messages' in body_json else 'not provided'
+                    prompt_length = 0
+                    if 'prompt' in body_json:
+                        prompt_val = body_json['prompt']
+                        if isinstance(prompt_val, str):
+                            prompt_length = len(prompt_val)
+                        elif isinstance(prompt_val, list):
+                            prompt_length = len(str(prompt_val))
+                    elif 'messages' in body_json:
+                        messages = body_json['messages']
+                        if isinstance(messages, list):
+                            prompt_length = sum(len(str(msg)) for msg in messages)
+                    
+                    self.logger.info(
+                        f"DEBUG_REQUEST_BODY - ID: {request_id} | "
+                        f"Model: {model_name} | "
+                        f"Prompt Info: {prompt_info} | "
+                        f"Prompt Length: {prompt_length} | "
+                        f"Body Keys: {list(body_json.keys()) if isinstance(body_json, dict) else 'Not a dict'}"
+                    )
+                except json.JSONDecodeError:
+                    self.logger.warning(f"DEBUG_REQUEST_BODY - Could not parse JSON body for request {request_id}")
+                
+                # 重要：重新包装 request，使 body 可以被后续处理再次读取
+                async def receive():
+                    return {"type": "http.request", "body": body, "more_body": False}
+                
+                request._receive = receive  # 替换内部 receive 函数
 
         # 记录请求信息（不包含敏感内容）
         self.logger.info(

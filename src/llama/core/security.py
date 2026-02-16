@@ -15,7 +15,10 @@ def verify_api_key(request: Request = None, authorization: str = None) -> Option
     验证API密钥
     使用 hmac.compare_digest 进行安全的字符串比较，防止时序攻击
     """
-    config = Config.from_env()
+    # Try to get config from app state first, fall back to environment
+    config = getattr(request.app.state, 'config', None) if request else None
+    if config is None:
+        config = Config.from_env()
 
     if (config.security.api_keys is None or len(config.security.api_keys) == 0) is True:
         DEFAULT_API_KEY = os.getenv("LLAMA_API_KEY", "sk-1234567890abcdef")
@@ -86,9 +89,12 @@ class ConcurrencyController:
         }
 
 
-def get_concurrency_controller():
+def get_concurrency_controller(request: Request):
     """
     获取并发控制器
     """
-    config = Config.from_env()
+    # Try to get config from app state first, fall back to environment
+    config = getattr(request.app.state, 'config', None)
+    if config is None:
+        config = Config.from_env()
     return ConcurrencyController(config)
