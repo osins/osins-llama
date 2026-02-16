@@ -5,7 +5,7 @@ import signal
 import os
 import sys
 import time
-from pathlib import Path
+from .pid_file_manager import PidFileManager
 from .process import ProcessManager
 
 
@@ -28,77 +28,20 @@ def execute_stop(force: bool = False) -> int:
 
     logger.debug(f"Attempting to stop process, force={force}")
 
-    # 初始化 ProcessManager
-    process_manager = ProcessManager(
-        expected_cmd_keyword="llama.api.server",
-        stop_timeout=30
-    )
-
-    # 获取PID
-    pid = process_manager.get_pid()
-    if not pid:
-        logger.warning("No PID found, process may not be running")
-        return 0  # PID不存在，认为服务已停止
-
-    logger.info(f"Stopping process {pid}")
-
-    # 通过 ProcessManager 停止进程
-    try:
-        if force:
-            # 强制停止：直接发送 SIGKILL 信号
-            logger.info(f"Force stopping process {pid}")
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                logger.info(f"Process {pid} already terminated")
-                # 即使进程已终止，也要清理PID文件
-                process_manager.pid_manager.delete()
-                return 0
-            except (OSError, PermissionError) as e:
-                logger.error(f"Failed to send SIGKILL to process {pid}: {e}")
-                return 1  # 强制停止失败
-        else:
-            # 优雅停止：发送 SIGTERM 信号
-            os.kill(pid, signal.SIGTERM)
-
-            # 等待进程终止
-            max_wait_time = 30  # 最多等待30秒
-            wait_interval = 0.5
-            elapsed = 0
-
-            while elapsed < max_wait_time:
-                try:
-                    os.kill(pid, 0)  # 检查进程是否仍在运行
-                    time.sleep(wait_interval)
-                    elapsed += wait_interval
-                except ProcessLookupError:
-                    logger.info(f"Process {pid} has been terminated gracefully")
-                    break
-            else:
-                # 超时仍未终止，强制终止
-                logger.warning(f"Process {pid} did not terminate gracefully, forcing termination")
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    # 进程在强制终止前已结束
-                    logger.info(f"Process {pid} has been terminated after SIGKILL")
-                    return 0
-                except (OSError, PermissionError) as e:
-                    logger.error(f"Failed to send SIGKILL to process {pid}: {e}")
-                    return 1  # 强制停止失败
-
-    except ProcessLookupError:
-        logger.info(f"Process {pid} has been terminated")
-        return 0  # 正常终止
-    except PermissionError as e:
-        logger.error(f"Permission denied when stopping process {pid}: {e}")
-        return 1  # 权限错误
-    except OSError as e:
-        logger.error(f"OS error when stopping process {pid}: {e}")
-        return 1  # 其他系统错误
-
-    return 0  # 成功停止
+    # 使用 ProcessManager 来停止进程
+    process_manager = ProcessManager(expected_cmd_keyword="llama.api.server")
     
+    if force:
+        success = process_manager.force_kill()
+    else:
+        success = process_manager.stop()
+
+    if success:
+        logger.info("Server stopped successfully.")
+        return 0
+    else:
+        logger.warning("Server was not running or could not be stopped.")
+        return 0  # 即使服务未运行，也算作成功停止
 
 
 @click.command()

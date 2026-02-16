@@ -2,26 +2,24 @@
 import click
 import requests  # type: ignore
 import logging
+import socket
 from pathlib import Path
 
-from .process import ProcessManager
 from .pid_file_manager import PidFileManager
 
 
-def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
+def execute_status(debug: bool = False) -> int:
     """
     检查 osins-llama 服务器状态
 
     Args:
-        pid_file: PID 文件路径
-        api_url: API 地址
         debug: 是否输出调试日志
 
     Returns:
         int: 标准退出码
             0: 服务正常运行
             1: PID 文件不存在（服务未运行）
-            2: PID 文件存在但进程不存在
+            2: PID 文件存在但端口未被占用
             3: API 不可达或返回异常
             4: PID 文件内容非法
             5: 其他异常
@@ -41,31 +39,42 @@ def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
         pid_manager = PidFileManager()
         try:
             pid_data = pid_manager.read(validate=True)
-            if not pid_data or not pid_data.pid:
+            if not pid_data or not pid_data.port:
                 logger.info("Service does not exist")
                 return 1
-            pid = pid_data.pid
-        except Exception:
-            logger.info("Service does not exist")
+            
+            port = pid_data.port
+            host = pid_data.host or 'localhost'
+        except Exception as e:
+            logger.info(f"Service does not exist: {e}")
             return 1
 
-        process_manager = ProcessManager(
-            expected_cmd_keyword="llama.server",
-            stop_timeout=30
-        )
+        # 检查端口是否被占用
+        def is_port_open(host: str, port: int) -> bool:
+            """检查指定主机和端口是否开放"""
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3)  # 设置3秒超时
+                result = sock.connect_ex((host, port))
+                sock.close()
+                return result == 0
+            except Exception:
+                return False
 
-        # Check if process is running
-        is_running = process_manager.is_running()
-
-        if not is_running:
-            logger.warning(f"PID file exists but process {pid} not running, cleaning up PID file")
-            pid_manager.delete()  # 清理无效的 PID 文件
+        if not is_port_open(host, port):
+            logger.warning(f"Port {port} is not occupied, service is not running")
             return 2
-        logger.info(f"Process {pid} is running")
+        
+        logger.info(f"Port {port} is occupied")
 
         # 检查 API 健康
         try:
-            response = requests.get(f"{api_url}/health", timeout=3)
+            api_url = f"http://{host}:{port}"
+            response = requests.get(f"{api_url}/health", timeout=5)
+            
+            # 直接输出健康检查响应内容
+            print(response.text)
+            
             if response.status_code == 200:
                 logger.info(f"API reachable at {api_url}")
                 return 0
@@ -82,23 +91,11 @@ def execute_status(pid_file: Path, api_url: str, debug: bool = False) -> int:
 
 
 @click.command()
-@click.option(
-    '--pid-file', default='./llama.pid', type=click.Path(),
-    help='PID file path'
-)
-@click.option('--api-url', default='http://localhost:31301', help='API endpoint URL')
 @click.option('--debug/--no-debug', default=False, help='Debug mode')
-def status(pid_file: str, api_url: str, debug: bool) -> None:
+def status(debug: bool) -> None:
     """Check the server running status."""
-    # Convert string path to Path object
-    pid_file_obj = Path(pid_file)
-
     # Execute status command
-    result_code = execute_status(
-        pid_file=pid_file_obj,
-        api_url=api_url,
-        debug=debug
-    )
+    result_code = execute_status(debug=debug)
 
     # Exit with appropriate code
     raise SystemExit(result_code)

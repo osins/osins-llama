@@ -9,6 +9,9 @@ from typing import Optional
 
 from src.llama.api.completion_routes import router as completion_router
 from src.llama.api.chat_routes import router as chat_router
+from src.llama.api.models_routes import router as models_router
+from src.llama.api.embeddings_routes import router as embeddings_router
+from src.llama.api.custom_routes import router as custom_router
 from src.llama.core.model_manager import ModelManager
 from src.llama.config.config import Config
 from src.llama.exceptions.service_error import ServiceError
@@ -48,8 +51,11 @@ def create_app(config: Config):
                       rate_limit_window=config.security.rate_limit_window)
 
     # Include routers
-    app.include_router(completion_router, prefix="/v1", tags=["completions"])
-    app.include_router(chat_router, prefix="/v1", tags=["chat"])
+    app.include_router(completion_router, tags=["completions"])  # Already prefixed with /v1 in routes file
+    app.include_router(chat_router, tags=["chat"])  # Already prefixed with /v1 in routes file
+    app.include_router(models_router, tags=["models"])  # Already prefixed with /v1 in routes file
+    app.include_router(embeddings_router, tags=["embeddings"])  # Already prefixed with /v1 in routes file
+    app.include_router(custom_router)  # No prefix for custom endpoints like /props
 
     @app.get("/", include_in_schema=False)
     def read_root():

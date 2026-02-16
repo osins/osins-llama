@@ -3,7 +3,7 @@ import subprocess
 import signal
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import time
 import sys
 import logging
@@ -27,12 +27,12 @@ class ProcessManager:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.INFO)
-        
+
         # 创建 PidFileManager 实例，它会从环境变量获取 PID 文件路径
         self.pid_manager = PidFileManager()
 
-    def start(self, pid_data=None):
-        """启动服务器进程"""
+    def start(self, pid_data=None, capture_output=True):
+        """启动服务器进程并返回进程对象以捕获输出，同时正确管理PID"""
         # 检查是否已有进程在运行
         if self.is_running():
             raise ProcessAlreadyRunning(f"Server is already running (PID: {self.get_pid()})")
@@ -40,38 +40,61 @@ class ProcessManager:
         # 从pid_manager获取命令
         cmd = self.pid_manager.get_cmd(pid_data)
 
-        if cmd:
-            # 输出即将执行的命令
-            self.logger.info(f"Starting server with command: {' '.join(cmd)}")
-            # 启动新进程
-            process = subprocess.Popen(cmd)
-            self.logger.info(f"Started server process with PID: {process.pid}")
-
-            # 等待服务器启动并获取实际监听端口的PID
-            if pid_data and pid_data.port:
-                # 等待端口就绪（增加超时时间以适应大模型加载）
-                if wait_for_port(pid_data.host or 'localhost', pid_data.port, timeout=120.0):  # 增加到120秒
-                    # 获取实际监听端口的PID
-                    actual_pid = wait_for_pid_by_port(pid_data.port, timeout=10.0)
-                    if actual_pid:
-                        self.logger.info(f"Found actual server process PID: {actual_pid}")
-                        # 更新pid_data中的PID为实际服务器PID
-                        pid_data.pid = actual_pid
-                        self.pid_manager.write(pid_data)
-                    else:
-                        self.logger.warning(f"Could not find actual server PID for port {pid_data.port}, using initial PID: {process.pid}")
-                        # 如果找不到实际PID，使用原始PID
-                        pid_data.pid = process.pid
-                        self.pid_manager.write(pid_data)
-                else:
-                    self.logger.error(f"Server failed to start on port {pid_data.port} within timeout")
-                    raise Exception(f"Server failed to start on port {pid_data.port}")
-            else:
-                # 否则使用PID管理器的set_pid方法更新PID
-                self.pid_manager.set_pid(process.pid)
-        else:
-            # 如果没有保存的数据，无法启动
+        # 如果没有命令，抛出异常
+        if not cmd:
             raise Exception("No saved data found in PID file, unable to start")
+
+        # 输出即将执行的命令
+        self.logger.info(f"Starting server with command: {' '.join(cmd)}")
+        
+        # 根据capture_output参数决定是否捕获输出
+        if capture_output:
+            # 启动新进程，捕获stdout和stderr
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # 将stderr合并到stdout
+                universal_newlines=True,
+                bufsize=0  # 无缓冲，确保实时输出
+            )
+        else:
+            # 不捕获输出，直接启动进程
+            process = subprocess.Popen(cmd)
+        
+        self.logger.info(f"Started server process with PID: {process.pid}")
+
+        # 立即写入PID文件，使用启动进程的PID
+        if pid_data:
+            pid_data.pid = process.pid
+            self.pid_manager.write(pid_data)
+
+        # 等待服务器启动并获取实际监听端口的PID
+        if pid_data and pid_data.port:
+            # 等待端口就绪（增加超时时间以适应大模型加载）
+            if not wait_for_port(pid_data.host or 'localhost', pid_data.port, timeout=120.0):
+                self.logger.error(f"Server failed to start on port {pid_data.port} within timeout")
+                # 终止进程并抛出异常
+                process.terminate()
+                raise Exception(f"Server failed to start on port {pid_data.port}")
+
+            # 获取实际监听端口的PID
+            actual_pid = wait_for_pid_by_port(pid_data.port, timeout=10.0)
+
+            # 处理PID查找结果
+            if actual_pid:
+                self.logger.info(f"Found actual server process PID: {actual_pid}")
+                # 根据需要决定是否更新PID文件中的PID
+                # 如果需要使用实际服务器PID，请取消下面几行的注释
+                # pid_data.pid = actual_pid
+                # self.pid_manager.write(pid_data)
+            if not actual_pid:
+                self.logger.warning(f"Could not find actual server PID for port {pid_data.port}, using initial PID: {process.pid}")
+
+        return process
+
+    def start_detached(self, pid_data=None):
+        """以分离模式启动服务器进程（不捕获输出，适用于守护进程）"""
+        return self.start(pid_data=pid_data, capture_output=False)
 
     def stop(self):
         """停止服务器进程"""
@@ -82,15 +105,62 @@ class ProcessManager:
 
         pid = pid_data.pid
         try:
-            # 尝试向进程发送信号终止它
-            os.kill(pid, signal.SIGTERM)
-
-            # 等待进程结束
-            time.sleep(1)  # 等待进程结束
+            # 尝试向进程发送SIGTERM信号终止它
+            if sys.platform == 'win32':
+                # Windows上使用taskkill命令
+                import subprocess
+                subprocess.run(['taskkill', '/PID', str(pid), '/F'], 
+                              stdout=subprocess.DEVNULL, 
+                              stderr=subprocess.DEVNULL)
+            else:
+                # Unix-like系统上使用kill命令
+                os.kill(pid, signal.SIGTERM)
+                
+                # 等待进程结束，如果没结束则强制杀死
+                for _ in range(10):  # 等待最多10秒
+                    if not is_process_running(pid):
+                        break
+                    time.sleep(1)
+                else:
+                    # 如果进程仍然存在，强制杀死
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        pass  # 进程可能已经退出
 
             # 删除PID文件
             self.pid_manager.delete()
 
+            return True
+        except OSError:
+            # 进程已经不存在或无权访问
+            self.pid_manager.delete()
+            return False
+
+    def force_kill(self):
+        """强制杀死服务器进程"""
+        pid_data = self.pid_manager.read(validate=True)
+        if not pid_data or not pid_data.pid:
+            return False
+
+        pid = pid_data.pid
+        try:
+            if sys.platform == 'win32':
+                import subprocess
+                subprocess.run(['taskkill', '/PID', str(pid), '/F'], 
+                              stdout=subprocess.DEVNULL, 
+                              stderr=subprocess.DEVNULL)
+            else:
+                os.kill(pid, signal.SIGKILL)
+            
+            # 等待进程结束
+            for _ in range(5):  # 等待最多5秒
+                if not is_process_running(pid):
+                    break
+                time.sleep(1)
+            
+            # 删除PID文件
+            self.pid_manager.delete()
             return True
         except OSError:
             # 进程已经不存在或无权访问
@@ -150,3 +220,25 @@ class ProcessManager:
     def get_pid(self):
         """从PID文件获取进程ID，支持新旧格式"""
         return self.pid_manager.get_pid()
+
+    def get_process_info(self):
+        """获取进程详细信息"""
+        pid_data = self.pid_manager.read(validate=True)
+        if not pid_data or not pid_data.pid:
+            return None
+
+        try:
+            process = psutil.Process(pid_data.pid)
+            info = {
+                'pid': process.pid,
+                'name': process.name(),
+                'status': process.status(),
+                'create_time': process.create_time(),
+                'cpu_percent': process.cpu_percent(),
+                'memory_info': process.memory_info()._asdict(),
+                'connections': [conn._asdict() for conn in process.connections()],
+                'cmdline': process.cmdline()
+            }
+            return info
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return None

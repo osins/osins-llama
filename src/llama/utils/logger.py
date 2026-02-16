@@ -1,130 +1,59 @@
-"""Production-grade logger configuration."""
+"""日志管理工具"""
 import logging
-import json
-import sys
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+import logging.handlers
 from pathlib import Path
-from typing import Optional, Dict, Any
+import sys
 
 
-SENSITIVE_FIELDS = {"api_key", "password", "secret", "token"}
-
-
-class JSONFormatter(logging.Formatter):
+def setup_logger(
+    name: str,
+    log_file: str = None,
+    level: int = logging.INFO,
+    max_bytes: int = 10485760,  # 10MB
+    backup_count: int = 5
+) -> logging.Logger:
     """
-    Structured JSON log formatter.
+    设置日志记录器
+    
+    Args:
+        name: 日志记录器名称
+        log_file: 日志文件路径
+        level: 日志级别
+        max_bytes: 单个日志文件最大字节数
+        backup_count: 保留的备份文件数量
+    
+    Returns:
+        logging.Logger: 配置好的日志记录器
     """
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
 
-    def format(self, record: logging.LogRecord) -> str:
-        log_record: Dict[str, Any] = {
-            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
+    # 避免重复添加处理器
+    if logger.handlers:
+        logger.handlers.clear()
 
-        if record.exc_info:
-            log_record["exception"] = self.formatException(record.exc_info)
+    # 创建格式化器
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+    )
 
-        return json.dumps(log_record, ensure_ascii=False)
+    # 添加控制台处理器
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
-
-class MaskingFilter(logging.Filter):
-    """
-    Mask sensitive fields in log message.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        msg = record.getMessage()
-
-        for field in SENSITIVE_FIELDS:
-            if field in msg:
-                msg = msg.replace(field, "******")
-
-        record.msg = msg
-        return True
-
-
-class LoggerManager:
-    """
-    Production-grade logger configuration.
-    """
-
-    def __init__(
-        self,
-        name: str = "llama",
-        level: str = "INFO",
-        log_file: Optional[Path] = None,
-        json_format: bool = False,
-        rotate_size_mb: int = 50,
-        backup_count: int = 5,
-        timed_rotate: bool = False,
-    ):
-        self.name = name
-        self.level = getattr(logging, level.upper(), logging.INFO)
-        self.log_file = log_file
-        self.json_format = json_format
-        self.rotate_size_mb = rotate_size_mb
-        self.backup_count = backup_count
-        self.timed_rotate = timed_rotate
-
-        self.logger = logging.getLogger(self.name)
-        self._configure()
-
-    # ---------------------------------------------------------
-    # Configuration
-    # ---------------------------------------------------------
-
-    def _configure(self) -> None:
-        self.logger.setLevel(self.level)
-        self.logger.propagate = False
-
-        # Prevent duplicate handlers
-        if self.logger.handlers:
-            return
-
-        formatter = (
-            JSONFormatter()
-            if self.json_format
-            else logging.Formatter(
-                "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-            )
+    # 添加文件处理器（带轮转）
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8'
         )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
-        masking_filter = MaskingFilter()
-
-        # Console handler
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(formatter)
-        console_handler.addFilter(masking_filter)
-        self.logger.addHandler(console_handler)
-
-        # File handler
-        if self.log_file:
-            self.log_file.parent.mkdir(parents=True, exist_ok=True)
-
-            if self.timed_rotate:
-                file_handler = TimedRotatingFileHandler(
-                    filename=str(self.log_file),
-                    when="midnight",
-                    backupCount=self.backup_count,
-                    encoding="utf-8",
-                )
-            else:
-                file_handler = RotatingFileHandler(
-                    filename=str(self.log_file),
-                    maxBytes=self.rotate_size_mb * 1024 * 1024,
-                    backupCount=self.backup_count,
-                    encoding="utf-8",
-                )
-
-            file_handler.setFormatter(formatter)
-            file_handler.addFilter(masking_filter)
-            self.logger.addHandler(file_handler)
-
-    # ---------------------------------------------------------
-    # Public Access
-    # ---------------------------------------------------------
-
-    def get_logger(self) -> logging.Logger:
-        return self.logger
+    return logger

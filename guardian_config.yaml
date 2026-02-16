@@ -1,0 +1,12 @@
+"""守护进程配置文件"""
+max_restarts: 5
+restart_interval: 5  # 重启间隔（秒）
+check_interval: 5    # 检查间隔（秒）
+exponential_backoff_factor: 2
+max_backoff_time: 300  # 最大退避时间（秒）
+log_level: INFO
+log_file: ./logs/guardian.log
+log_max_bytes: 10485760  # 10MB
+log_backup_count: 5
+gpu_monitoring: true
+gpu_check_interval: 30  # GPU检查间隔（秒）

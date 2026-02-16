@@ -404,7 +404,7 @@ def start(
 
         # Prepare PID data with current process PID
         pid_data = PidData(
-            pid=os.getpid(),  # Use current process PID temporarily
+            pid=None,  # Use current process PID temporarily
             model_path=str(config.model_path) if config.model_path else None,
             host=config.host,
             port=config.port,
@@ -417,10 +417,11 @@ def start(
             debug=debug
         )
 
-        # Start the server - process_manager.start() will create the PID file with the provided data
-        process_manager.start(pid_data)
-
-        click.echo(f"Server started successfully on {config.host}: {config.port}")
+        # 以守护模式启动服务器
+        server_process = process_manager.start_detached(pid_data)
+        click.echo(f"Server started successfully in guardian mode on {config.host}:{config.port}")
+        click.echo(f"Server process PID: {server_process.pid}")
+        click.echo("Server is now running independently in the background")
 
     except click.BadParameter as e:
         # 重新引发click特定异常

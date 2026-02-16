@@ -7,6 +7,8 @@ from typing import Optional
 
 from .process import ProcessManager
 from .exceptions import ProcessError
+from .pid_file_manager import PidFileManager
+from ..models.pid_data import PidData
 
 
 @click.command()
@@ -44,36 +46,53 @@ def restart(
             expected_cmd_keyword="llama.server",
             stop_timeout=30
         )
+
+        # Stop the current process
+        process_manager.stop()
+        click.echo("Stopped the current server process.")
         
-        # Prepare command for restart
-        cmd = [
-            "python", "-m", "src.llama.server",
-            "--host", host,
-            "--port", str(port),
-            "--n-ctx", str(n_ctx),
-            "--n-threads", str(n_threads),
-            "--max-concurrent-requests", str(max_concurrent_requests),
-            "--rate-limit-requests", str(rate_limit_requests),
-            "--rate-limit-window", str(rate_limit_window)
-        ]
+        # Wait a moment before restarting
+        time.sleep(1)
+
+        # Read the PID data to get the original startup parameters
+        pid_manager = PidFileManager()
+        pid_data = pid_manager.read(validate=True)
         
+        if not pid_data:
+            raise Exception("No saved data found in PID file, unable to restart")
+
+        # Update the PID data with any command-line overrides
         if model_path:
-            cmd.extend(["--model-path", model_path])
-        
+            pid_data.model_path = model_path
+        if host:
+            pid_data.host = host
+        if port:
+            pid_data.port = port
+        if n_ctx:
+            pid_data.n_ctx = n_ctx
+        if n_threads:
+            pid_data.n_threads = n_threads
         if api_keys:
-            cmd.extend(["--api-keys", api_keys])
-        
-        if debug:
-            cmd.append("--debug")
-        
-        process_manager.restart()
+            pid_data.api_keys = api_keys
+        if max_concurrent_requests:
+            pid_data.max_concurrent_requests = max_concurrent_requests
+        if rate_limit_requests:
+            pid_data.rate_limit_requests = rate_limit_requests
+        if rate_limit_window:
+            pid_data.rate_limit_window = rate_limit_window
+        if debug is not None:
+            pid_data.debug = debug
+
+        # 以守护模式重启进程
+        process_manager.start_detached(pid_data=pid_data)
+        click.echo(f"Server restarted successfully in guardian mode on {pid_data.host}:{pid_data.port}")
 
         # Wait for the server to restart
         click.echo(f"Waiting {wait} seconds for server to restart...")
         time.sleep(wait)
 
         click.echo("Server restarted successfully.")
-        
+
     except ProcessError as e:
         click.echo(f"Process error: {e}", err=True)
         sys.exit(1)
