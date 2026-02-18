@@ -9,12 +9,12 @@ from typing import Optional
 import json
 import asyncio
 
-from src.llama.api.completion_routes import router as completion_router
-from src.llama.api.chat_routes import router as chat_router
-from src.llama.api.models_routes import router as models_router
-from src.llama.api.embeddings_routes import router as embeddings_router
-from src.llama.api.custom_routes import router as custom_router
-from src.llama.api.llama_completion_routes import router as llama_completion_router
+from src.llama.api.open_ai.completion_routes import router as completion_router
+from src.llama.api.open_ai.chat_routes import router as chat_router
+from src.llama.api.open_ai.models_routes import router as models_router
+from src.llama.api.open_ai.embeddings_routes import router as embeddings_router
+from src.llama.api.llama_cpp.custom_routes import router as custom_router
+from src.llama.api.llama_cpp.llama_completion_routes import router as llama_completion_router
 from src.llama.core.model_manager import ModelManager
 from src.llama.config.config import Config
 from src.llama.exceptions.service_error import ServiceError
@@ -141,13 +141,20 @@ def start_server(config: Config):
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Start the Llama API server")
-    parser.add_argument("--host", type=str, default=None, help="Server host address")
-    parser.add_argument("--port", type=int, default=None, help="Server port")
-    parser.add_argument("--model-path", type=str, default=None, help="Path to model file")
-    parser.add_argument("--n-ctx", type=int, default=None, help="Context length")
-    parser.add_argument("--n-threads", type=int, default=None, help="Number of threads")
-    parser.add_argument("--n-gpu-layers", type=int, default=None, help="Number of GPU layers (-1 for all)")
-    parser.add_argument("--n-batch", type=int, default=None, help="Batch size for GPU")
+    
+    parser.add_argument("-H", "--host", type=str, default=None, help="Server host address")
+    parser.add_argument("-p", "--port", type=int, default=None, help="Server port")
+    parser.add_argument("-m", "--model", dest="model_path", type=str, default=None, help="Path to model file")
+    parser.add_argument("-c", "--ctx-size", dest="n_ctx", type=int, default=None, help="Context length")
+    parser.add_argument("-t", "--threads", dest="n_threads", type=int, default=None, help="Number of threads")
+    parser.add_argument("-ngl", "--gpu-layers", dest="n_gpu_layers", type=int, default=None, help="Number of GPU layers (-1 for all)")
+    parser.add_argument("-b", "--batch-size", dest="n_batch", type=int, default=None, help="Batch size for GPU")
+    parser.add_argument("-d", "--device", type=str, default=None, help="GPU device to use (e.g., cuda0, cuda1)")
+    parser.add_argument("--kv-offload", action="store_true", help="Enable KV cache offloading")
+    parser.add_argument("-fa", "--flash-attn", type=str, default=None, choices=["auto", "enabled", "disabled"], help="Flash attention mode")
+    parser.add_argument("--repack", action="store_true", help="Enable model repacking")
+    parser.add_argument("--chat-template", type=str, default=None, help="Chat template string")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--api-keys", type=str, default=None, help="API key list (comma separated)")
     parser.add_argument("--max-concurrent-requests", type=int, default=None, help="Max concurrent requests")
     parser.add_argument("--rate-limit-requests", type=int, default=None, help="Rate limit requests per window")
@@ -176,6 +183,18 @@ def merge_config_with_args(config: Config, args) -> Config:
         config.model.n_gpu_layers = args.n_gpu_layers
     if args.n_batch is not None:
         config.model.n_batch = args.n_batch
+    if args.device is not None:
+        config.model.device = args.device
+    if args.kv_offload:
+        config.model.kv_offload = True
+    if args.flash_attn is not None:
+        config.model.flash_attn = args.flash_attn
+    if args.repack:
+        config.model.repack = True
+    if args.chat_template is not None:
+        config.model.chat_template = args.chat_template
+    if args.verbose:
+        config.model.verbose = True
         
     if args.api_keys is not None:
         api_keys_list = [key.strip() for key in args.api_keys.split(",") if key.strip()]

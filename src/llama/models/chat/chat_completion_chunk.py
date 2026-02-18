@@ -1,7 +1,5 @@
-# src/llama/models/chat\chat_completion_chunk.py
-
 from pydantic import ConfigDict, Field
-from typing import List, Optional
+from typing import List, Optional, Any
 from .chat_completion_chunk_choice import ChatCompletionChunkChoice
 from ..common.usage import Usage
 from ..common.base_model import BaseDataModel
@@ -19,5 +17,6 @@ class ChatCompletionChunk(BaseDataModel):
     object: str = "chat.completion.chunk"
     created: int = Field(..., ge=0, le=2147483647)  # Unix timestamp
     model: str = Field(..., min_length=1, max_length=255)
-    choices: List[ChatCompletionChunkChoice] = Field(..., min_length=1, max_length=10)  # 限制choices数量
+    choices: List[ChatCompletionChunkChoice] = Field(default_factory=list, max_length=10)  # 允许空choices用于usage chunk
     usage: Optional[Usage] = None  # 仅在最终chunk中提供
+    error: Optional[Any] = None  # 错误信息，非OpenAI标准但用于错误处理

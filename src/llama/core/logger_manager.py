@@ -26,7 +26,7 @@ class LoggerManager:
     def _init_logger(self, name: str, debug: bool, log_to_console: bool):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-        self.debug = debug
+        self._debug_enabled = debug
 
         # 防止重复添加 handler
         if not self.logger.handlers and log_to_console:
@@ -65,7 +65,7 @@ class LoggerManager:
         """
         用于记录请求信息（仅调试模式）
         """
-        if not self.debug:
+        if not self._debug_enabled:
             return
         client_info = client or "unknown"
         body_text = "<skipped>"
@@ -90,7 +90,7 @@ class LoggerManager:
         """
         用于记录响应信息（仅调试模式）
         """
-        if not self.debug:
+        if not self._debug_enabled:
             return
         client_info = client or "unknown"
         body_text = "<skipped>"

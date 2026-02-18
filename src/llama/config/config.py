@@ -51,11 +51,16 @@ class Config(BaseModel):
         return cls(
             model=ModelConfig(
                 path=model_path,
-                n_ctx=max(1, min(int(os.getenv("LLAMA_N_CTX", "2048")), 100000)),
-                n_threads=max(1, min(int(os.getenv("LLAMA_N_THREADS", "8")), 64)),
-                n_gpu_layers=max(-1, min(int(os.getenv("LLAMA_N_GPU_LAYERS", "-1")), 200)),
-                n_batch=max(1, min(int(os.getenv("LLAMA_N_BATCH", "512")), 4096)),
-                verbose=os.getenv("LLAMA_VERBOSE", "false").lower() == "true"
+                n_ctx=max(1, min(int(os.getenv("LLAMA_N_CTX", "8192")), 100000)),
+                n_threads=max(1, min(int(os.getenv("LLAMA_N_THREADS", "10")), 64)),
+                n_gpu_layers=max(-1, min(int(os.getenv("LLAMA_N_GPU_LAYERS", "16")), 200)),
+                n_batch=max(1, min(int(os.getenv("LLAMA_N_BATCH", "1024")), 4096)),
+                verbose=os.getenv("LLAMA_VERBOSE", "true").lower() == "true",
+                device=os.getenv("LLAMA_DEVICE", "cuda0"),
+                kv_offload=os.getenv("LLAMA_KV_OFFLOAD", "true").lower() == "true",
+                flash_attn=os.getenv("LLAMA_FLASH_ATTN", "auto"),
+                repack=os.getenv("LLAMA_REPACK", "true").lower() == "true",
+                chat_template=os.getenv("LLAMA_CHAT_TEMPLATE", None)
             ),
             resources=ResourcesConfig(
                 max_prompt_tokens=max(1, min(int(os.getenv("LLAMA_MAX_PROMPT_TOKENS", "2048")), 100000)),
@@ -69,8 +74,8 @@ class Config(BaseModel):
                 max_concurrent_requests=max(1, min(int(os.getenv("LLAMA_MAX_CONCURRENT_REQUESTS", "10")), 1000))
             ),
             service=ServiceConfig(
-                host=os.getenv("LLAMA_HOST", "0.0.0.0"),
-                port=max(1024, min(int(os.getenv("LLAMA_PORT", "31301")), 65535)),  # 限制端口范围
+                host=os.getenv("LLAMA_HOST", "192.168.50.2"),
+                port=max(1024, min(int(os.getenv("LLAMA_PORT", "31301")), 65535)),
                 debug=os.getenv("LLAMA_DEBUG", "false").lower() == "true"
             )
         )

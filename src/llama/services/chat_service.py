@@ -118,7 +118,11 @@ class ChatService:
             start_time = time.time()
 
             # 将消息转换为适合模型的格式
-            formatted_messages = self._format_messages(request.messages)
+            formatted_messages = self._format_messages(
+                request.messages,
+                response_format=request.response_format,
+                tools=request.tools
+            )
 
             try:
                 # 构建模型调用参数字典
@@ -159,30 +163,38 @@ class ChatService:
                 logger.error(f"ChatService.generate error: {e}", exc_info=True)
                 raise ServiceError(f"Model generation failed: {str(e)}")
 
-            # 构造响应对象
-            response_obj = ChatCompletionResponse(
-                id=f"chatcmpl-{uuid.uuid4().hex}",
-                created=int(start_time),
-                model=request.model,
-                choices=[],  # 后续填充
-                usage=None  # 后续填充
-            )
-
-            # 解析模型响应
+            # 解析模型响应并构建choices列表
             choices = []
             if "choices" in response and isinstance(response["choices"], list):
                 for idx, choice in enumerate(response["choices"]):
-                    # 验证choice格式
                     if not isinstance(choice, dict):
                         raise ServiceError(f"Invalid choice format at index {idx}")
 
-                    # 创建选择项
                     from src.llama.models.chat.chat_completion_choice import ChatCompletionChoice
                     from src.llama.models.chat.chat_message import ChatMessage
                     from src.llama.models.chat.chat_role import ChatRole
+                    from src.llama.models.chat.chat_finish_reason import ChatFinishReason
 
                     message_content = choice.get("message", {}).get("content", "")
-                    finish_reason = choice.get("finish_reason", "stop")
+                    finish_reason_str = choice.get("finish_reason", "stop")
+                    
+                    # 验证response_format
+                    if request.response_format:
+                        from src.llama.services.response_format_service import ResponseFormatService
+                        try:
+                            # 提取JSON内容
+                            message_content = ResponseFormatService.extract_json_from_response(message_content)
+                            # 验证格式
+                            ResponseFormatService.validate_json_response(message_content, request.response_format)
+                        except ValueError as e:
+                            logger.warning(f"Response format validation failed: {e}")
+                            # 继续处理，但记录警告
+                    
+                    # 将字符串转换为ChatFinishReason枚举
+                    try:
+                        finish_reason = ChatFinishReason(finish_reason_str)
+                    except ValueError:
+                        finish_reason = ChatFinishReason.STOP
 
                     chat_message = ChatMessage(
                         role=ChatRole.ASSISTANT,
@@ -197,8 +209,6 @@ class ChatService:
 
                     choices.append(chat_choice)
 
-            response_obj.choices = choices
-
             # 计算用量
             from src.llama.models.common.usage import Usage
             prompt_tokens = count_tokens_in_messages(request.messages)
@@ -207,10 +217,17 @@ class ChatService:
             )
             total_tokens = prompt_tokens + completion_tokens
 
-            response_obj.usage = Usage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens
+            # 一次性构建响应对象（避免修改frozen model）
+            response_obj = ChatCompletionResponse(
+                id=f"chatcmpl-{uuid.uuid4().hex}",
+                created=int(start_time),
+                model=request.model,
+                choices=choices,
+                usage=Usage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens
+                )
             )
 
             return response_obj
@@ -252,7 +269,11 @@ class ChatService:
                 raise ValueError(f"Messages exceed maximum token count: {self.config.resources.max_prompt_tokens}")
 
             # 将消息转换为适合模型的格式
-            formatted_messages = self._format_messages(request.messages)
+            formatted_messages = self._format_messages(
+                request.messages,
+                response_format=request.response_format,
+                tools=request.tools
+            )
 
             try:
                 # 构建模型调用参数字典
@@ -298,7 +319,8 @@ class ChatService:
             try:
                 for chunk in response_generator:
                     # 检查是否取消请求
-                    if asyncio.current_task().cancelled():
+                    current_task = asyncio.current_task()
+                    if current_task is not None and current_task.cancelling() > 0:
                         break
 
                     # 验证chunk格式
@@ -318,8 +340,9 @@ class ChatService:
                         from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
                         from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
                         from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
+                        from src.llama.models.chat.chat_role import ChatRole
 
-                        delta = ChatCompletionDelta(content=delta_content, role="assistant")
+                        delta = ChatCompletionDelta(content=delta_content, role=ChatRole.ASSISTANT)
 
                         chunk_choice = ChatCompletionChunkChoice(
                             index=0,
@@ -341,21 +364,52 @@ class ChatService:
                 raise ServiceError(f"Stream processing failed: {str(e)}")
 
             # 发送结束块
+            from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+            from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+            from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
+            from src.llama.models.common.usage import Usage
+
+            end_delta = ChatCompletionDelta(content=None, role=None)
+            end_choice = ChatCompletionChunkChoice(
+                index=0,
+                delta=end_delta,
+                finish_reason="stop"
+            )
             end_chunk = ChatCompletionChunk(
                 id=gen_id,
                 object="chat.completion.chunk",
                 created=created_time,
                 model=request.model,
-                choices=[
-                    {
-                        "index": 0,
-                        "delta": {},
-                        "finish_reason": "stop"
-                    }
-                ]
+                choices=[end_choice]
             )
 
             yield end_chunk
+
+            # 如果请求了usage统计，发送额外的usage chunk
+            include_usage = (
+                request.stream_options is not None and 
+                request.stream_options.include_usage is True
+            )
+            
+            if include_usage:
+                # 计算token使用量
+                prompt_tokens = count_tokens_in_messages(request.messages)
+                completion_tokens = len(full_content.split()) if full_content else 0
+                total_tokens = prompt_tokens + completion_tokens
+                
+                usage_chunk = ChatCompletionChunk(
+                    id=gen_id,
+                    object="chat.completion.chunk",
+                    created=created_time,
+                    model=request.model,
+                    choices=[],  # usage chunk的choices为空
+                    usage=Usage(
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens
+                    )
+                )
+                yield usage_chunk
         except ValueError as ve:
             # 捕获参数验证错误
             raise ve
@@ -367,12 +421,19 @@ class ChatService:
             logger.error(f"ChatService.generate_stream error: {e}", exc_info=True)
             raise ServiceError(f"Unexpected error during streaming: {str(e)}")
 
-    def _format_messages(self, messages):
+    def _format_messages(
+        self, 
+        messages, 
+        response_format=None,
+        tools=None
+    ):
         """
         将消息格式化为模型可接受的格式
 
         Args:
             messages: 消息列表
+            response_format: 响应格式配置
+            tools: 工具定义列表
 
         Returns:
             格式化后的消息字符串
@@ -381,6 +442,42 @@ class ChatService:
         for msg in messages:
             role = getattr(msg, 'role', 'user')
             content = getattr(msg, 'content', '')
-            formatted += f"{role}: {content}\n"
+            
+            # 处理工具调用消息
+            tool_calls = getattr(msg, 'tool_calls', None)
+            if tool_calls:
+                import json
+                tool_calls_str = json.dumps([
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    } for tc in tool_calls
+                ], ensure_ascii=False)
+                formatted += f"{role}: [TOOL_CALLS] {tool_calls_str}\n"
+            elif content:
+                formatted += f"{role}: {content}\n"
+            
+            # 处理工具响应消息
+            tool_call_id = getattr(msg, 'tool_call_id', None)
+            name = getattr(msg, 'name', None)
+            if tool_call_id and name:
+                formatted += f"tool (id={tool_call_id}, name={name}): {content}\n"
+        
+        # 添加JSON格式提示
+        if response_format:
+            from src.llama.services.response_format_service import ResponseFormatService
+            formatted += ResponseFormatService.build_json_prompt_suffix(response_format)
+        
+        # 添加工具定义提示
+        if tools:
+            import json
+            tools_str = json.dumps(tools, indent=2, ensure_ascii=False)
+            formatted += f"\n\nAvailable tools:\n```json\n{tools_str}\n```\n"
+            formatted += "You can call these tools by responding with a JSON object containing 'tool_calls'.\n"
+        
         formatted += "assistant:"
         return formatted

@@ -107,22 +107,16 @@ class ProcessManager:
 
     def stop(self):
         """停止服务器进程"""
-        # 通过pid_manager获取PID数据
         pid_data = self.pid_manager.read(validate=True)
 
-        # 尝试通过端口查找可能的进程
+        if not pid_data or not pid_data.port:
+            raise ValueError("PID file not found or port information missing. Cannot stop server.")
+
         pids_to_kill = []
-        if pid_data and pid_data.port:
-            port_pid = find_pid_by_port(pid_data.port)
-            if port_pid:
-                pids_to_kill.append(port_pid)
-                logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
-        else:
-            # 尝试默认端口
-            default_port_pid = find_pid_by_port(31301)
-            if default_port_pid:
-                pids_to_kill.append(default_port_pid)
-                logger.info(f"Found process {default_port_pid} on default port 31301, adding to kill list")
+        port_pid = find_pid_by_port(pid_data.port)
+        if port_pid:
+            pids_to_kill.append(port_pid)
+            logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
 
         success = True
         for pid in pids_to_kill:
@@ -166,22 +160,16 @@ class ProcessManager:
 
     def force_kill(self):
         """强制杀死服务器进程"""
-        # 通过pid_manager获取PID数据
         pid_data = self.pid_manager.read(validate=True)
 
-        # 尝试通过端口查找可能的进程
+        if not pid_data or not pid_data.port:
+            raise ValueError("PID file not found or port information missing. Cannot stop server.")
+
         pids_to_kill = []
-        if pid_data and pid_data.port:
-            port_pid = find_pid_by_port(pid_data.port)
-            if port_pid:
-                pids_to_kill.append(port_pid)
-                logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
-        else:
-            # 尝试默认端口
-            default_port_pid = find_pid_by_port(31301)
-            if default_port_pid:
-                pids_to_kill.append(default_port_pid)
-                logger.info(f"Found process {default_port_pid} on default port 31301, adding to kill list")
+        port_pid = find_pid_by_port(pid_data.port)
+        if port_pid:
+            pids_to_kill.append(port_pid)
+            logger.info(f"Found process {port_pid} on port {pid_data.port}, adding to kill list")
 
         success = True
         for pid in pids_to_kill:

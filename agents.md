@@ -1,108 +1,237 @@
-# Llama CLI Project Agents Guide
+# Llama CLI Project - Agents Guide
 
-## 项目概述
-这是一个基于llama_cpp的命令行工具，用于管理和运行LLM模型服务。
+## Project Overview
+A CLI tool for managing and running LLM models with llama_cpp. Provides commands to start, stop, restart, and monitor LLM server instances.
 
-## 项目结构
-```
-llama/
-├── .flake8            # Flake8配置文件
-├── .gitignore         # Git忽略文件配置
-├── agents.md          # 项目规范文档
-├── docs/              # 文档目录
-├── LICENSE            # 许可证文件
-├── pyproject.toml     # 项目配置文件
-├── README.md          # 项目说明文档
-├── requirements.txt   # 生产环境依赖
-├── requirements-dev.txt # 开发环境依赖
-├── scripts/           # 脚本目录
-├── setup.cfg          # Setup配置文件
-├── setup.py           # 项目配置文件
-├── src/               # 源代码目录
-│   └── llama/         # 源代码包
-│       ├── __init__.py
-│       ├── _version.py # 版本信息
-│       ├── main.py    # CLI入口点
-│       ├── api/       # 接口层
-│       ├── config/    # 配置
-│       ├── core/      # 核心逻辑
-│       │   └── commands/ # 命令模块目录
-│       │       ├── __init__.py
-│       │       ├── start.py   # start命令实现
-│       │       ├── restart.py # restart命令实现
-│       │       ├── down.py    # down命令实现
-│       │       └── status.py  # status命令实现
-│       ├── models/    # 数据模型
-│       ├── services/  # 服务层
-│       └── utils/     # 工具函数
-├── tests/             # 测试目录
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── test_main.py   # 主程序测试
-│   ├── test_start.py  # start命令测试
-│   ├── test_restart.py # restart命令测试
-│   ├── test_down.py   # down命令测试
-│   └── test_status.py # status命令测试
-├── tox.ini            # 多版本测试配置
-└── venv/              # 虚拟环境目录
-```
+## Build/Lint/Test Commands
 
-## 技术栈
-- Python 3.8+
-- llama-cpp-python
-- click (命令行解析)
-
-## 代码规范
-- 遵循PEP 8代码风格
-- 每个函数或类必须放在单独的py文件中
-- 不允许一个py文件中包含多个函数或类
-- 所有函数和类必须配有单元测试
-- 单元测试保存在tests目录中
-- 使用src目录隔离源代码
-- 按功能模块组织代码到相应子目录
-
-## 环境设置
+### Environment Setup
 ```bash
-# 创建虚拟环境
 python -m venv venv
-
-# 激活虚拟环境 (Windows)
-venv\Scripts\activate
-
-# 安装依赖
-pip install llama-cpp-python
-
-# 安装项目 (开发模式)
-pip install -e .
+venv\Scripts\activate  # Windows
+pip install -e ".[dev]"
 ```
 
-## 命令说明
-- `llama start -p 31301 -m ./qwen2.5-7b-instruct-uncensored-q4_k_m.gguf` - 启动LLM服务
-- `llama restart` - 重启LLM服务
-- `llama down` - 停止LLM服务
-- `llama status` - 查看LLM服务状态
-- `llama --help` - 显示帮助信息
-
-## 测试命令
+### Testing
 ```bash
-# 运行所有测试
+# Run all tests
 pytest
 
-# 运行特定测试
-pytest tests/test_start.py
-
-# 运行测试并显示详细输出
+# Run tests with verbose output
 pytest -v
 
-# 运行测试并生成覆盖率报告
-pytest --cov=llama
+# Run a single test file
+pytest tests/cli/test_start.py
+
+# Run a single test function
+pytest tests/cli/test_start.py::test_validate_host_valid_ipv4
+
+# Run tests with coverage
+pytest --cov=llama --cov-report=term-missing
+
+# Run specific test directories
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/cli/
 ```
 
-## 开发指南
-1. 每个新功能必须创建独立的模块文件
-2. 必须编写对应的单元测试
-3. 提交前确保所有测试通过
-4. 遵循单一职责原则，每个文件只负责一个功能
-5. 按照功能将代码组织到相应的目录(api, core, models, services, utils)
-6. 使用src目录隔离源代码，便于打包和发布
-7. 遵循标准Python项目结构规范
+### Linting & Type Checking
+```bash
+# Run flake8 linter
+flake8 src/ tests/
+
+# Run mypy type checker
+mypy src/llama/
+
+# Format code with black
+black src/ tests/
+
+# Check formatting without changes
+black --check src/ tests/
+```
+
+### Build & Install
+```bash
+pip install -e .
+pip install -e ".[dev]"
+pip install build
+python -m build
+```
+
+## Project Structure
+```
+src/llama/
+├── api/           # API server implementation
+├── cli/           # CLI commands (start, stop, restart, status, etc.)
+├── config/        # Configuration management
+├── core/          # Core business logic
+├── exceptions/    # Custom exception classes (one per file)
+├── middlewares/   # FastAPI middlewares
+├── models/        # Data models (dataclasses)
+└── utils/         # Utility functions
+tests/
+├── cli/           # CLI command tests
+├── unit/          # Unit tests
+├── integration/   # Integration tests
+└── conftest.py    # Shared pytest fixtures
+```
+
+## Code Style Guidelines
+
+### Imports
+```python
+# Standard library first (alphabetical)
+import os
+import sys
+from pathlib import Path
+from typing import Optional, List
+
+# Third-party imports next
+import click
+import pytest
+
+# Local imports last (relative imports for internal modules)
+from ..config.config_manager import ConfigManager
+from .process import ProcessManager
+```
+
+### Type Annotations
+- All functions MUST have type annotations (enforced by mypy strict mode)
+- Use `Optional[T]` for nullable parameters/returns
+- Use `List[T]`, `Dict[K, V]` from typing module (Python 3.8 compatibility)
+- Dataclasses should use `Optional[T] = None` for optional fields
+
+```python
+def validate_host(ctx, param, value) -> str:
+    ...
+
+def parse_api_keys(value: Optional[str]) -> Optional[List[str]]:
+    ...
+```
+
+### Naming Conventions
+- Functions/variables: `snake_case`
+- Classes: `PascalCase`
+- Constants: `UPPER_SNAKE_CASE`
+- Private functions: prefix with underscore `_private_function`
+- CLI command functions: lowercase command name (e.g., `start`, `stop`)
+- Exception classes: suffix with `Error` (e.g., `APIError`, `ValidationError`)
+
+### Docstrings
+- Use triple double quotes for docstrings
+- Include description, Args, and Returns sections for complex functions
+- Simple functions can have single-line docstrings
+
+```python
+def wait_for_port(host: str, port: int, timeout: float = 30.0) -> bool:
+    """
+    Wait for port to be ready for listening.
+    
+    Args:
+        host: Host address
+        port: Port number
+        timeout: Timeout in seconds
+    
+    Returns:
+        bool: True if port is ready within timeout, False otherwise
+    """
+```
+
+### Error Handling
+- Use custom exceptions from `src/llama/exceptions/`
+- One exception class per file
+- Raise specific exceptions, not generic `Exception`
+- Use `click.BadParameter` for CLI validation errors
+- Use `click.ClickException` for CLI runtime errors
+- Always clean up resources in `finally` blocks
+
+```python
+from ..exceptions import ValidationError, APIError
+
+def validate_input(value: str) -> str:
+    if not value:
+        raise ValidationError("Value cannot be empty")
+    return value
+```
+
+### CLI Commands
+- Use Click decorators for command definition
+- Use `@click.pass_context` for commands that need context
+- Validate inputs early with callbacks
+- Provide helpful error messages
+
+```python
+@click.command()
+@click.option('-p', '--port', type=click.IntRange(1024, 65535), default=31301)
+@click.pass_context
+def start(ctx, port: int) -> None:
+    """Start the LLM server."""
+    ...
+```
+
+### Data Models
+- Use `@dataclass` decorator for data models
+- Place all model classes in `src/llama/models/`
+- Use `Optional[T] = None` for optional fields
+
+```python
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class PidData:
+    model_path: Optional[str] = None
+    port: Optional[int] = None
+```
+
+### Testing
+- Test file naming: `test_<module_name>.py`
+- Test function naming: `test_<function_name>_<scenario>`
+- Use `pytest.fixture` for shared setup
+- Use `unittest.mock.patch` for mocking
+- Group related tests in test classes when appropriate
+
+```python
+@pytest.fixture
+def runner():
+    return CliRunner()
+
+def test_validate_host_valid_ipv4():
+    assert validate_host(None, None, '192.168.1.1') == '192.168.1.1'
+
+@patch('os.open')
+def test_secure_open_model_invalid(mock_open_fd):
+    with pytest.raises(Exception):
+        secure_open_model(Path('/invalid'))
+```
+
+### Code Formatting
+- Max line length: 88 characters (Black default)
+- Use 4 spaces for indentation
+- No tabs
+- Blank line between functions/classes
+- Trailing commas in multi-line structures
+
+### Security Considerations
+- Validate all user inputs
+- Use secure file operations (check ownership, permissions)
+- Avoid TOCTOU race conditions
+- Sanitize paths before file operations
+- Never expose sensitive data in logs
+
+### Platform Compatibility
+- Handle Windows/Unix differences with `sys.platform` checks
+- Use `hasattr(os, 'O_NOFOLLOW')` for Unix-specific flags
+- Prefer `pathlib.Path` over string paths
+
+## CLI Commands Reference
+```bash
+llama start -m <model_path> -p 31301  # Start LLM server
+llama stop                            # Stop LLM server
+llama restart                         # Restart LLM server
+llama status                          # Check server status
+llama health                          # Health check
+llama logs                            # View logs
+llama config                          # Configuration management
+llama --help                          # Show help
+```

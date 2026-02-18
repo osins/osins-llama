@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, Request
-from typing import AsyncGenerator
+from fastapi.responses import StreamingResponse
+from typing import AsyncGenerator, Union
 import asyncio
 import time
 
 from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
 from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
 from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
 from src.llama.services.chat_service import ChatService
 from src.llama.core.security import (
     verify_api_key,
@@ -41,7 +44,7 @@ def get_concurrency_controller_chat(request: Request):
     return get_concurrency_controller(request)
 
 
-@router.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+@router.post("/v1/chat/completions")
 async def create_chat_completion(
     request: ChatCompletionRequest,
     req: Request,
@@ -55,7 +58,7 @@ async def create_chat_completion(
     """
     client_ip = req.client.host if req.client else "unknown"
 
-    if (not rate_limiter.is_allowed(client_ip)) is True:
+    if not rate_limiter.is_allowed(client_ip):
         raise RateLimitError("Rate limit exceeded")
 
     await concurrency_ctrl.acquire()
@@ -100,18 +103,22 @@ async def create_chat_completion(
                         object="chat.completion.chunk",
                         created=int(time.time()),
                         model=request.model,
-                        choices=[{
-                            "index": 0,
-                            "delta": {},
-                            "finish_reason": "error"
-                        }],
-                        error=str(e)
+                        choices=[],
+                        error={"message": str(e), "type": "stream_error"}
                     )
                     yield f"data: {error_chunk.model_dump_json()}\n\n"
                 finally:
                     await concurrency_ctrl.release()
 
-            return generate_stream()
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no"
+                }
+            )
         else:
             response = await service.generate(request)
             return response

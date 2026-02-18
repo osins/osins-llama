@@ -6,8 +6,15 @@
 """
 
 from .base_model import BaseDataModel
-from .usage import Usage
+from .usage import Usage, PromptTokensDetails, CompletionTokensDetails
 from .error_response import ErrorResponse
 from .error_model import ErrorModel
 
-__all__ = ["BaseDataModel", "Usage", "ErrorResponse", "ErrorModel"]
+__all__ = [
+    "BaseDataModel", 
+    "Usage", 
+    "PromptTokensDetails", 
+    "CompletionTokensDetails",
+    "ErrorResponse", 
+    "ErrorModel"
+]

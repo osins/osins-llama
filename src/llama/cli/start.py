@@ -148,51 +148,73 @@ def create_pid_file_secure(pid_file: Path):
 
 def validate_and_check_pid_file(pid_file: Path) -> None:
     """验证PID文件路径的安全性并检查是否有正在运行的进程"""
-    # 检查PID文件是否已存在，使用O_NOFOLLOW防止符号链接攻击
-    # 先检查PID文件是否存在，如果存在则尝试删除（如果进程不存在）
     if pid_file.exists():
         try:
-            # 尝试读取PID文件内容
-            with open(pid_file, 'r') as f:
-                pid_str = f.read().strip()
+            with open(pid_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
 
-            if pid_str.isdigit():
-                pid = int(pid_str)
-                process_exists = False
-
-                # 检查进程是否仍在运行
+            if content:
+                import json
+                is_json = False
+                port = None
+                
                 try:
-                    if sys.platform == 'win32':
-                        import subprocess
-                        result = subprocess.run(
-                            ['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV'],
-                            capture_output=True,
-                            text=True
+                    data = json.loads(content)
+                    is_json = True
+                    port = data.get('port')
+                except json.JSONDecodeError:
+                    pass
+
+                if is_json and port:
+                    from src.llama.utils.pid_tools import find_pid_by_port
+                    port_pid = find_pid_by_port(port)
+                    
+                    if port_pid:
+                        raise click.BadParameter(
+                            f"Server is already running on port {port} (PID: {port_pid}). "
+                            f"Stop it first or use a different port."
                         )
-                        process_exists = f'"{pid}"' in result.stdout
                     else:
-                        os.kill(pid, 0)
-                        process_exists = True
-                except Exception:
+                        try:
+                            pid_file.unlink()
+                        except Exception as e:
+                            click.echo(f"Warning: Failed to delete stale PID file {pid_file}: {e}", err=True)
+                elif content.isdigit():
+                    pid = int(content)
                     process_exists = False
 
-                if process_exists:
-                    raise click.BadParameter(
-                        f"Process with PID {pid} is already running. "
-                        f"Check {pid_file}."
-                    )
+                    try:
+                        if sys.platform == 'win32':
+                            import subprocess
+                            result = subprocess.run(
+                                ['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV'],
+                                capture_output=True,
+                                text=True
+                            )
+                            process_exists = f'"{pid}"' in result.stdout
+                        else:
+                            os.kill(pid, 0)
+                            process_exists = True
+                    except Exception:
+                        process_exists = False
+
+                    if process_exists:
+                        raise click.BadParameter(
+                            f"Process with PID {pid} is already running. "
+                            f"Check {pid_file}."
+                        )
+                    else:
+                        try:
+                            pid_file.unlink()
+                        except Exception as e:
+                            click.echo(f"Warning: Failed to delete stale PID file {pid_file}: {e}", err=True)
                 else:
-                    # 进程不存在，尝试删除PID文件
                     try:
                         pid_file.unlink()
                     except Exception as e:
-                        click.echo(f"Warning: Failed to delete stale PID file {pid_file}: {e}", err=True)
-            else:
-                # PID文件内容无效，尝试删除
-                try:
-                    pid_file.unlink()
-                except Exception as e:
-                    click.echo(f"Warning: Failed to delete invalid PID file {pid_file}: {e}", err=True)
+                        click.echo(f"Warning: Failed to delete invalid PID file {pid_file}: {e}", err=True)
+        except click.BadParameter:
+            raise
         except Exception as e:
             click.echo(f"Warning: Failed to process PID file {pid_file}: {e}", err=True)
 
@@ -263,9 +285,9 @@ def safe_remove_pid(pid_file: Path):
         os.close(fd)
 
 
-@click.command(context_settings=dict(help_option_names=['-h', '--help']))
+@click.command(context_settings=dict(help_option_names=['--help']))
 @click.option(
-    '--model-path',
+    '-m', '--model', 'model_path',
     type=click.Path(
         exists=True,
         file_okay=True,
@@ -276,49 +298,92 @@ def safe_remove_pid(pid_file: Path):
     help='Path to model file'
 )
 @click.option(
-    '--host',
-    default='127.0.0.1',
+    '-h', '--host',
+    default='192.168.50.2',
     callback=validate_host,
     show_default=True,
-    help='Server bind address (default is localhost for security)'
+    help='Server bind address'
 )
 @click.option(
-    '--port',
+    '-p', '--port',
     type=click.IntRange(1024, 65535),
     default=31301,
     show_default=True,
     help='Server port (1024-65535)'
 )
 @click.option(
-    '--n-ctx',
-    type=click.IntRange(128, 32768),
-    default=2048,
+    '-c', '--ctx-size', 'n_ctx',
+    type=click.IntRange(128, 100000),
+    default=8192,
     show_default=True,
-    help='Context length (128-32768)'
+    help='Context length (128-100000)'
 )
 @click.option(
-    '--n-threads',
+    '-t', '--threads', 'n_threads',
     type=click.IntRange(1, 64),
-    default=lambda: min(8, os.cpu_count() or 1),
+    default=10,
     show_default=True,
-    help='Number of threads (1-64, capped for production)'
+    help='Number of threads (1-64)'
 )
 @click.option(
-    '--n-gpu-layers',
+    '-ngl', '--gpu-layers', 'n_gpu_layers',
     type=click.IntRange(-1, 200),
-    default=-1,
+    default=16,
     show_default=True,
     help='Number of GPU layers (-1 for all, 0 for CPU only)'
 )
 @click.option(
-    '--api-keys',
+    '-b', '--batch-size', 'n_batch',
+    type=click.IntRange(1, 4096),
+    default=1024,
+    show_default=True,
+    help='Batch size for GPU (1-4096)'
+)
+@click.option(
+    '-d', '--device',
+    default='cuda0',
+    show_default=True,
+    help='GPU device to use (e.g., cuda0, cuda1)'
+)
+@click.option(
+    '--kv-offload',
+    is_flag=True,
+    default=True,
+    help='Enable KV cache offloading'
+)
+@click.option(
+    '-fa', '--flash-attn',
+    type=click.Choice(['auto', 'enabled', 'disabled']),
+    default='auto',
+    show_default=True,
+    help='Flash attention mode'
+)
+@click.option(
+    '--repack',
+    is_flag=True,
+    default=True,
+    help='Enable model repacking'
+)
+@click.option(
+    '--chat-template',
+    default=None,
+    help='Chat template string'
+)
+@click.option(
+    '-v', '--verbose',
+    is_flag=True,
+    default=True,
+    help='Enable verbose output'
+)
+@click.option(
+    '-k', '--api-keys',
     callback=lambda ctx, param, value: parse_api_keys(value),
     help='API key list (comma separated, 16-128 chars each, '
          'alphanumeric, underscore, hyphen)'
 )
 @click.option(
     '--max-concurrent-requests',
-    type=click.IntRange(1, 100),  # 降低默认上限
+    type=click.IntRange(1, 100),
     default=10,
     show_default=True,
     help='Max concurrent requests (1-100)'
@@ -358,6 +423,13 @@ def start(
     n_ctx: int,
     n_threads: int,
     n_gpu_layers: int,
+    n_batch: int,
+    device: str,
+    kv_offload: bool,
+    flash_attn: str,
+    repack: bool,
+    chat_template: Optional[str],
+    verbose: bool,
     api_keys: Optional[List[str]],
     max_concurrent_requests: int,
     rate_limit_requests: int,
@@ -384,14 +456,22 @@ def start(
             "host": host,
             "port": port,
             "model_path": raw_model_path,
+            "n_ctx": n_ctx,
+            "n_threads": n_threads,
             "n_gpu_layers": n_gpu_layers,
+            "n_batch": n_batch,
+            "device": device,
+            "kv_offload": kv_offload,
+            "flash_attn": flash_attn,
+            "repack": repack,
+            "chat_template": chat_template,
+            "verbose": verbose,
         }
 
         config_path = ctx.obj.config_path
         config_manager = ConfigManager(config_path)
         config = config_manager.load(cli_overrides=cli_overrides)
 
-        # 检查端口是否已被占用，如果是则立即退出
         from src.llama.utils.pid_tools import find_pid_by_port
         port_pid = find_pid_by_port(config.port)
         if port_pid:
@@ -399,19 +479,16 @@ def start(
             click.echo("Please stop the existing process first or use a different port.")
             raise click.ClickException(f"Port {config.port} is already in use by process {port_pid}")
 
-        # Initialize process manager
         process_manager = ProcessManager(
             expected_cmd_keyword="llama.api.server",
             stop_timeout=30
         )
 
-        # Create PidFileManager instance to write PID data directly
         from .pid_file_manager import PidFileManager
         from ..models.pid_data import PidData
 
         pid_manager = PidFileManager()
 
-        # Prepare PID data without PID field
         pid_data = PidData(
             model_path=str(config.model_path) if config.model_path else None,
             host=config.host,
@@ -419,6 +496,13 @@ def start(
             n_ctx=n_ctx,
             n_threads=n_threads,
             n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            device=device,
+            kv_offload=kv_offload,
+            flash_attn=flash_attn,
+            repack=repack,
+            chat_template=chat_template,
+            verbose=verbose,
             api_keys=','.join(api_keys) if api_keys else None,
             max_concurrent_requests=max_concurrent_requests,
             rate_limit_requests=rate_limit_requests,
@@ -426,7 +510,6 @@ def start(
             debug=debug
         )
 
-        # 以守护模式启动服务器
         server_process = process_manager.start_detached(pid_data)
         click.echo(f"Server started successfully in guardian mode on {config.host}:{config.port}")
         click.echo(f"Server process PID: {server_process.pid}")
