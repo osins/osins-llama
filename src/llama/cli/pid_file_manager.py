@@ -122,6 +122,8 @@ class PidFileManager:
         int_fields = [
             "n_ctx",
             "n_threads",
+            "n_gpu_layers",
+            "n_batch",
             "max_concurrent_requests",
             "rate_limit_requests",
             "rate_limit_window",
@@ -165,6 +167,7 @@ class PidFileManager:
         # 检查是否有意外的额外字段（除了内部使用的 _hash）
         allowed_fields = set([
             "model_path", "host", "port", "n_ctx", "n_threads",
+            "n_gpu_layers", "n_batch",
             "api_keys", "max_concurrent_requests", "rate_limit_requests",
             "rate_limit_window", "debug", "format_version", "_hash"
         ])
@@ -534,6 +537,8 @@ class PidFileManager:
             optional_map = {
                 "--n-ctx": pid_data.n_ctx,
                 "--n-threads": pid_data.n_threads,
+                "--n-gpu-layers": pid_data.n_gpu_layers,
+                "--n-batch": pid_data.n_batch,
                 "--max-concurrent-requests": pid_data.max_concurrent_requests,
                 "--rate-limit-requests": pid_data.rate_limit_requests,
                 "--rate-limit-window": pid_data.rate_limit_window,

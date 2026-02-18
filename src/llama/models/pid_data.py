@@ -9,6 +9,8 @@ class PidData:
     port: Optional[int] = None
     n_ctx: Optional[int] = None
     n_threads: Optional[int] = None
+    n_gpu_layers: Optional[int] = None
+    n_batch: Optional[int] = None
     api_keys: Optional[str] = None
     max_concurrent_requests: Optional[int] = None
     rate_limit_requests: Optional[int] = None

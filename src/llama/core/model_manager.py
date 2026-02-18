@@ -1,6 +1,8 @@
 from llama_cpp import Llama
 from pathlib import Path
 import threading
+import time
+import uuid
 from src.llama.config.config import Config
 import asyncio
 from typing import AsyncGenerator, Optional
@@ -155,14 +157,21 @@ class ModelManager:
 
         print(f"Loading model: {Path(self.model_path).name}")
 
+        n_gpu_layers = self.config.model.n_gpu_layers
+        if n_gpu_layers == -1:
+            n_gpu_layers = 100
+
         self.model = Llama(
             model_path=self.model_path,
             n_ctx=self.config.model.n_ctx,
             n_threads=self.config.model.n_threads,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=self.config.model.n_batch,
             verbose=self.config.model.verbose,
         )
 
         print(f"Model loaded successfully: {Path(self.model_path).name}")
+        print(f"GPU layers: {n_gpu_layers}, Batch size: {self.config.model.n_batch}")
 
     @classmethod
     def get_instance(cls, config: Config = None) -> "ModelManager":
@@ -175,6 +184,16 @@ class ModelManager:
     def get_model(self) -> Optional[Llama]:
         return self.model
 
+    def get_model_name(self) -> str:
+        """Get the name of the loaded model.
+
+        Returns:
+            Model filename or empty string if no model loaded.
+        """
+        if not self.model_path:
+            return ""
+        return Path(self.model_path).name
+
     def reload_model(self, model_path: str = None):
         if model_path:
             self.model_path = model_path
@@ -185,10 +204,10 @@ class ModelManager:
     # 流式生成
     #
     # 实现说明：
-    #   llama-cpp-python 的流式生成器是同步的，在 run_in_executor 线程池
-    #   中无法可靠地逐 token yield 给 asyncio。最稳定的方案是：
-    #     1. 用 stream=True 在线程池中完整生成
-    #     2. 将取完整文本后，在 async 层按块 yield 模拟流式效果
+    #   使用线程生产 + async 队列桥接的方式实现真正的流式生成
+    #   1. 在单独线程中运行模型生成
+    #   2. 通过 asyncio.Queue 在线程和协程之间传递数据
+    #   3. 使用 call_soon_threadsafe 保证线程安全
     # ------------------------------------------------------------------
     async def stream_generate(
         self,
@@ -196,14 +215,14 @@ class ModelManager:
         params: dict = None,
     ) -> AsyncGenerator[str, None]:
         """
-        异步流式生成（先完整生成，再逐步 yield 模拟流式）。
+        异步流式生成（真正的流式生成，逐token返回）。
 
         Args:
             prompt:  输入提示词
             params:  生成参数（原始请求参数，会自动过滤不支持的字段）
 
         Yields:
-            文本片段（每次约 4 个字符）
+            生成的文本片段
         """
         from src.llama.core.logger_manager import logger
 
@@ -211,45 +230,99 @@ class ModelManager:
             raise RuntimeError("Model is not loaded")
 
         raw_params = dict(params or {})
-        # 使用流式调用，获取完整响应
         raw_params["stream"] = True
         clean_params = filter_llama_params(raw_params)
 
+        # 强制最大 token 上限保护（生产必须限制）
+        MAX_ALLOWED_TOKENS = 4096
+        if "max_tokens" in clean_params:
+            clean_params["max_tokens"] = min(
+                int(clean_params["max_tokens"]),
+                MAX_ALLOWED_TOKENS,
+            )
+        else:
+            clean_params["max_tokens"] = 512
+
         logger.info(f"stream_generate clean_params keys: {list(clean_params.keys())}")
 
-        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        loop = asyncio.get_running_loop()
 
-        def _sync_generate():
-            # 使用流式模式获取完整的生成器
+        cancel_event = threading.Event()
+        generation_error: Optional[Exception] = None
+
+        def callback(chunk):
+            # 将完整的chunk放入异步队列
+            if not cancel_event.is_set():
+                loop.call_soon_threadsafe(queue.put_nowait, chunk)
+
+        def producer():
+            nonlocal generation_error
             try:
-                return list(self.model(prompt, **clean_params))
+                # 使用回调方式逐 token 处理
+                for chunk in self.model(prompt, **clean_params):
+                    if cancel_event.is_set():
+                        break
+                    
+                    # 使用回调函数发送完整chunk
+                    callback(chunk)
+
             except Exception as e:
-                logger.error(f"Error in model stream generation: {e}", exc_info=True)
-                raise
+                generation_error = e
+            finally:
+                # 发送结束信号
+                loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        # 在线程池执行同步生成，避免阻塞 asyncio event loop
-        chunks = await loop.run_in_executor(None, _sync_generate)
+        # 在线程中运行模型
+        thread = threading.Thread(target=producer, daemon=True)
+        thread.start()
 
-        # 将所有文本片段拼接起来
-        full_text = ""
-        for chunk in chunks:
-            try:
-                text = chunk["choices"][0].get("text", "")
-                full_text += text
-            except (KeyError, IndexError, TypeError):
-                continue
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    if not thread.is_alive() or cancel_event.is_set():
+                        break
+                    continue
 
-        logger.info(f"stream_generate: generated {len(full_text)} chars | text={repr(full_text)}")
+                if item is None:
+                    break
 
-        if not full_text:
-            logger.warning("stream_generate: empty output from model")
-            return
+                if isinstance(item, Exception):
+                    raise item
 
-        # 按块 yield，模拟流式输出（每块约 4 字符，对中文约 2 个字）
-        chunk_size = 4
-        for i in range(0, len(full_text), chunk_size):
-            yield full_text[i: i + chunk_size]
-            await asyncio.sleep(0)  # 让出控制权，保证异步调度
+                # 从完整chunk中提取文本
+                try:
+                    text = item["choices"][0].get("text", "")
+                except Exception:
+                    continue
+
+                if text:
+                    # 提取模型文件名
+                    model_filename = self.model_path.replace('\\', '/').split('/')[-1]
+                    # 返回完整chunk而不是纯文本
+                    chunk_data = {
+                        "choices": [{
+                            "text": text,
+                            "index": 0,  # 实际索引将在CompletionService中处理
+                            "logprobs": None,
+                            "finish_reason": None
+                        }],
+                        "created": int(time.time()),
+                        "model": model_filename,
+                        "object": "text_completion",
+                        "id": f"cmpl-{uuid.uuid4().hex[:8]}"
+                    }
+                    yield chunk_data
+                    logger.info(f"Generated token: {repr(text)} (model: {model_filename})")
+
+            if generation_error:
+                raise generation_error
+
+        finally:
+            cancel_event.set()
+            thread.join(timeout=2)
 
     # ------------------------------------------------------------------
     # 非流式生成（同步包装为异步）

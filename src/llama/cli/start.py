@@ -298,10 +298,17 @@ def safe_remove_pid(pid_file: Path):
 )
 @click.option(
     '--n-threads',
-    type=click.IntRange(1, 64),  # 限制最大线程数为64
+    type=click.IntRange(1, 64),
     default=lambda: min(8, os.cpu_count() or 1),
     show_default=True,
     help='Number of threads (1-64, capped for production)'
+)
+@click.option(
+    '--n-gpu-layers',
+    type=click.IntRange(-1, 200),
+    default=-1,
+    show_default=True,
+    help='Number of GPU layers (-1 for all, 0 for CPU only)'
 )
 @click.option(
     '--api-keys',
@@ -350,6 +357,7 @@ def start(
     port: int,
     n_ctx: int,
     n_threads: int,
+    n_gpu_layers: int,
     api_keys: Optional[List[str]],
     max_concurrent_requests: int,
     rate_limit_requests: int,
@@ -358,34 +366,27 @@ def start(
     pid_file: str
 ):
     """Start the osins-llama server instance."""
-    # 安全地打开模型文件，防止符号链接和TOCTOU竞争条件
     raw_model_path = Path(model_path)
     model_fd, model_stat = secure_open_model(raw_model_path)
 
     pid_file_obj = Path(pid_file).expanduser().absolute()
 
-    # 验证PID文件路径并检查冲突
     validate_and_check_pid_file(pid_file_obj)
 
-    # 运行时校验线程数是否超过CPU核心数
     cpu_limit = os.cpu_count() or 1
     if n_threads > cpu_limit:
         raise click.BadParameter(
             f"n_threads cannot exceed available CPU cores ({cpu_limit})."
         )
 
-    # 不再进行预检测端口，让服务器在启动时处理端口冲突
-    # 这样可以避免竞态条件
-
     try:
-        # Prepare CLI overrides
         cli_overrides = {
             "host": host,
             "port": port,
             "model_path": raw_model_path,
+            "n_gpu_layers": n_gpu_layers,
         }
 
-        # Load configuration
         config_path = ctx.obj.config_path
         config_manager = ConfigManager(config_path)
         config = config_manager.load(cli_overrides=cli_overrides)
@@ -417,6 +418,7 @@ def start(
             port=config.port,
             n_ctx=n_ctx,
             n_threads=n_threads,
+            n_gpu_layers=n_gpu_layers,
             api_keys=','.join(api_keys) if api_keys else None,
             max_concurrent_requests=max_concurrent_requests,
             rate_limit_requests=rate_limit_requests,

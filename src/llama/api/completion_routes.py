@@ -1,9 +1,14 @@
+"""Completion routes for osins-llama API server.
+
+Provides OpenAI-compatible completion endpoints for text generation.
+"""
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any, Dict, List, Optional, Union
 import asyncio
 import time
 import uuid
+import json
 
 from src.llama.models.legacy.completion_request import CompletionRequest
 from src.llama.models.legacy.completion_response import CompletionResponse
@@ -20,19 +25,45 @@ from src.llama.core.logger_manager import logger
 
 router = APIRouter()
 
+MAX_CONTEXT_LENGTH: int = 2048
+DEFAULT_TEMPERATURE: float = 0.8
+DEFAULT_TOP_K: int = 40
+DEFAULT_TOP_P: float = 0.95
+DEFAULT_MIN_P: float = 0.05
+DEFAULT_MAX_TOKENS: int = 16
+DEFAULT_REPEAT_LAST_N: int = 64
+DEFAULT_REPEAT_PENALTY: float = 1.1
+SSE_HEADERS: Dict[str, str] = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
 
-# ---------------------------------------------------------------------------
-# 依赖注入
-# ---------------------------------------------------------------------------
 
 def get_completion_service(request: Request) -> CompletionService:
+    """Get completion service instance from app state.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        CompletionService instance.
+    """
     logger.info("get_completion_service dependency called")
     config = getattr(request.app.state, 'config', None)
     logger.info(f"Retrieved config from app.state: {config is not None}")
     return CompletionService.get_instance(config)
 
 
-def get_api_key(request: Request):
+def get_api_key(request: Request) -> str:
+    """Extract and validate API key from request.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        Validated API key string.
+    """
     client_ip = request.client.host if request.client else "unknown"
     logger.info(f"get_api_key dependency called, client IP: {client_ip}")
     api_key = verify_api_key(request=request)
@@ -40,7 +71,15 @@ def get_api_key(request: Request):
     return api_key
 
 
-def get_rate_limiter_dep(request: Request):
+def get_rate_limiter_dep(request: Request) -> Any:
+    """Get rate limiter for request.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        Rate limiter instance.
+    """
     client_ip = request.client.host if request.client else "unknown"
     logger.info(f"get_rate_limiter_dep dependency called for client IP: {client_ip}")
     rate_limiter = get_rate_limiter(request)
@@ -48,7 +87,15 @@ def get_rate_limiter_dep(request: Request):
     return rate_limiter
 
 
-def get_concurrency_controller_dep(request: Request):
+def get_concurrency_controller_dep(request: Request) -> Any:
+    """Get concurrency controller for request.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        Concurrency controller instance.
+    """
     client_ip = request.client.host if request.client else "unknown"
     logger.info(f"get_concurrency_controller_dep dependency called for client IP: {client_ip}")
     concurrency_ctrl = get_concurrency_controller(request)
@@ -56,20 +103,27 @@ def get_concurrency_controller_dep(request: Request):
     return concurrency_ctrl
 
 
-# ---------------------------------------------------------------------------
-# 校验逻辑（流式和非流式共用）
-# ---------------------------------------------------------------------------
-
 async def _validate_request(
     request: CompletionRequest,
     req: Request,
     service: CompletionService,
     api_key: str,
-    rate_limiter,
-):
-    """
-    执行所有前置校验，不涉及并发控制器。
-    校验通过则静默返回，失败则抛出对应异常。
+    rate_limiter: Any,
+) -> None:
+    """Validate completion request before processing.
+
+    Args:
+        request: Completion request data.
+        req: FastAPI request object.
+        service: Completion service instance.
+        api_key: Validated API key.
+        rate_limiter: Rate limiter instance.
+
+    Raises:
+        RateLimitError: If rate limit exceeded.
+        AuthenticationError: If API key invalid.
+        ServiceError: If model not loaded.
+        ValidationError: If request exceeds context length.
     """
     client_ip = req.client.host if req.client else "unknown"
     logger.info(f"_validate_request called for model: {request.model}, client IP: {client_ip}")
@@ -87,7 +141,6 @@ async def _validate_request(
         logger.error("Model not loaded")
         raise ServiceError("Model not loaded")
 
-    # token 数量校验
     total_prompt_tokens = 0
     if isinstance(request.prompt, str):
         total_prompt_tokens = count_tokens(request.prompt)
@@ -99,98 +152,232 @@ async def _validate_request(
 
     if request.max_tokens is not None:
         total_expected = total_prompt_tokens + request.max_tokens
-        if total_expected > 2048:
+        if total_expected > MAX_CONTEXT_LENGTH:
             logger.warning(f"Request exceeds maximum context length: prompt_tokens={total_prompt_tokens}, max_tokens={request.max_tokens}, total={total_expected}")
             raise ValidationError(
                 f"Request exceeds maximum context length. "
                 f"Prompt tokens: {total_prompt_tokens}, "
                 f"Max tokens: {request.max_tokens}, "
                 f"Total: {total_expected}. "
-                f"Maximum allowed: 2048"
+                f"Maximum allowed: {MAX_CONTEXT_LENGTH}"
             )
-    
+
     logger.info(f"All validations passed for model: {request.model}")
 
 
-# ---------------------------------------------------------------------------
-# 流式生成器工厂（流式请求专用）
-# ---------------------------------------------------------------------------
+async def _stream_tokens(
+    service: CompletionService,
+    request: CompletionRequest,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream tokens from completion service.
+
+    Args:
+        service: Completion service instance.
+        request: Completion request data.
+
+    Yields:
+        Token chunk dictionaries.
+    """
+    async for chunk in service.generate_stream(request):
+        yield chunk
+
+
+def _extract_chunk_text(chunk: Dict[str, Any]) -> str:
+    """Extract text from chunk safely.
+
+    Args:
+        chunk: Token chunk dictionary.
+
+    Returns:
+        Extracted text or empty string.
+    """
+    choices = chunk.get("choices", [])
+    if not choices:
+        return ""
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return ""
+    return first_choice.get("text", "")
+
+
+def _extract_chunk_index(chunk: Dict[str, Any]) -> int:
+    """Extract index from chunk safely.
+
+    Args:
+        chunk: Token chunk dictionary.
+
+    Returns:
+        Chunk index or 0.
+    """
+    choices = chunk.get("choices", [])
+    if not choices:
+        return 0
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return 0
+    return first_choice.get("index", 0)
+
+
+def _build_finish_chunk(
+    request_id: str,
+    created: int,
+    model: str,
+    index: int,
+    request: CompletionRequest,
+) -> Dict[str, Any]:
+    """Build finish chunk for stream completion.
+
+    Args:
+        request_id: Unique request identifier.
+        created: Creation timestamp.
+        model: Model name.
+        index: Current chunk index.
+        request: Original completion request.
+
+    Returns:
+        Finish chunk dictionary.
+    """
+    return {
+        "choices": [
+            {
+                "text": "",
+                "index": index,
+                "logprobs": None,
+                "finish_reason": "length"
+            }
+        ],
+        "created": created,
+        "model": model,
+        "object": "text_completion",
+        "id": request_id
+    }
+
+
+def _build_error_chunk(
+    model: str,
+    error_message: str,
+) -> str:
+    """Build error chunk for stream failure.
+
+    Args:
+        model: Model name.
+        error_message: Error description.
+
+    Returns:
+        SSE formatted error chunk.
+    """
+    error_chunk = StreamChunk(
+        id=f"error-{uuid.uuid4().hex[:8]}",
+        object="text_completion.chunk",
+        created=int(time.time()),
+        model=model,
+        choices=[{
+            "text": "",
+            "index": 0,
+            "logprobs": None,
+            "finish_reason": "error",
+        }],
+        error=error_message,
+    )
+    return f"data: {error_chunk.model_dump_json()}\n\n"
+
+
+async def _stream_generator(
+    request: CompletionRequest,
+    service: CompletionService,
+    concurrency_ctrl: Any,
+) -> AsyncGenerator[str, None]:
+    """Generate SSE stream for completion request.
+
+    Args:
+        request: Completion request data.
+        service: Completion service instance.
+        concurrency_ctrl: Concurrency controller instance.
+
+    Yields:
+        SSE formatted data strings.
+    """
+    await concurrency_ctrl.acquire()
+    request_id = f"cmpl-{uuid.uuid4().hex[:8]}"
+    created = int(time.time())
+    index = 0
+    start_time = time.time()
+    model_name = request.model if request.model else service.model_manager.get_model_name()
+
+    try:
+        logger.info(f"[{request_id}] Stream start, model: {model_name}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
+
+        async for chunk in _stream_tokens(service, request):
+            text = _extract_chunk_text(chunk)
+
+            if text:
+                logger.info(f"Generated token: {repr(text)} (model: {model_name})")
+
+            sse_data = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+            yield sse_data
+            index = _extract_chunk_index(chunk)
+
+        finish_data = _build_finish_chunk(request_id, created, model_name, index, request)
+        finish_message = f"data: {json.dumps(finish_data, ensure_ascii=False)}\n\n"
+        yield finish_message
+
+        yield "data: [DONE]\n\n"
+
+        logger.info(f"[{request_id}] Stream finished, total chunks: {index}, elapsed: {time.time()-start_time:.2f}s")
+
+    except asyncio.CancelledError:
+        logger.warning(f"[{request_id}] Stream cancelled, elapsed: {time.time()-start_time:.2f}s")
+        raise
+    except Exception as e:
+        logger.error(f"[{request_id}] Stream error: {e}", exc_info=True)
+        yield _build_error_chunk(model_name, str(e))
+    finally:
+        await concurrency_ctrl.release()
+
 
 def _make_stream_generator(
     request: CompletionRequest,
     service: CompletionService,
-    concurrency_ctrl,
+    concurrency_ctrl: Any,
 ) -> AsyncGenerator[str, None]:
+    """Create SSE stream generator for completion request.
+
+    Args:
+        request: Completion request data.
+        service: Completion service instance.
+        concurrency_ctrl: Concurrency controller instance.
+
+    Returns:
+        AsyncGenerator yielding SSE formatted strings.
     """
-    创建 SSE 流式生成器。
-    concurrency_ctrl 在此处 acquire，在 finally 中 release，确保成对出现。
-    """
+    return _stream_generator(request, service, concurrency_ctrl)
 
-    async def generate_stream() -> AsyncGenerator[str, None]:
-        # 在生成器内部 acquire，确保与 release 成对
-        await concurrency_ctrl.acquire()
-        logger.info(f"Starting stream generation for model: {request.model}, prompt: {repr(request.prompt[:100] + '...' if len(request.prompt) > 100 else request.prompt) if isinstance(request.prompt, str) else f'{len(request.prompt)} prompts'}")
-        start_time = time.time()
-        total_tokens = 0
-        try:
-            async for chunk in service.generate_stream(request):
-                # 记录每个生成的token/文本片段
-                text = ""
-                try:
-                    if isinstance(chunk.choices[0], dict):
-                        text = chunk.choices[0].get("text", "")
-                    else:
-                        text = getattr(chunk.choices[0], 'text', '')
-                except (IndexError, AttributeError):
-                    pass
-                    
-                if text:
-                    total_tokens += len(text)
-                    logger.info(f"Generated token: {repr(text)} (model: {request.model})")
-                yield f"data: {chunk.model_dump_json()}\n\n"
-            yield "data: [DONE]\n\n"
-            elapsed_time = time.time() - start_time
-            logger.info(f"Stream generation completed for model: {request.model}, total tokens: {total_tokens}, elapsed time: {elapsed_time:.2f}s")
-
-        except asyncio.CancelledError:
-            elapsed_time = time.time() - start_time
-            logger.info(f"Stream cancelled for request {request.model}, total tokens: {total_tokens}, elapsed time: {elapsed_time:.2f}s")
-            raise
-        except Exception as e:
-            elapsed_time = time.time() - start_time
-            logger.error(f"Stream generation error: {str(e)}, model: {request.model}, total tokens: {total_tokens}, elapsed time: {elapsed_time:.2f}s")
-            error_chunk = StreamChunk(
-                id=f"error-{uuid.uuid4().hex[:8]}",
-                object="text_completion.chunk",
-                created=int(time.time()),
-                model=request.model,
-                choices=[{
-                    "text": "",
-                    "index": 0,
-                    "logprobs": None,
-                    "finish_reason": "error",
-                }],
-                error=str(e),
-            )
-            yield f"data: {error_chunk.model_dump_json()}\n\n"
-        finally:
-            await concurrency_ctrl.release()
-
-    return generate_stream()
-
-
-# ---------------------------------------------------------------------------
-# 非流式处理（共用逻辑）
-# ---------------------------------------------------------------------------
 
 async def _handle_non_stream(
     request: CompletionRequest,
     req: Request,
     service: CompletionService,
     api_key: str,
-    rate_limiter,
-    concurrency_ctrl,
-):
+    rate_limiter: Any,
+    concurrency_ctrl: Any,
+) -> CompletionResponse:
+    """Handle non-streaming completion request.
+
+    Args:
+        request: Completion request data.
+        req: FastAPI request object.
+        service: Completion service instance.
+        api_key: Validated API key.
+        rate_limiter: Rate limiter instance.
+        concurrency_ctrl: Concurrency controller instance.
+
+    Returns:
+        Completion response.
+
+    Raises:
+        HTTPException: On validation or service errors.
+        ServiceError: On unexpected errors.
+    """
     await _validate_request(request, req, service, api_key, rate_limiter)
     await concurrency_ctrl.acquire()
     try:
@@ -217,19 +404,32 @@ async def _handle_non_stream(
         await concurrency_ctrl.release()
 
 
-# ---------------------------------------------------------------------------
-# 路由处理
-# ---------------------------------------------------------------------------
-
 async def _handle_request(
     endpoint_name: str,
     request: CompletionRequest,
     req: Request,
     service: CompletionService,
     api_key: str,
-    rate_limiter,
-    concurrency_ctrl,
-):
+    rate_limiter: Any,
+    concurrency_ctrl: Any,
+) -> Any:
+    """Route completion request to appropriate handler.
+
+    Args:
+        endpoint_name: API endpoint name for logging.
+        request: Completion request data.
+        req: FastAPI request object.
+        service: Completion service instance.
+        api_key: Validated API key.
+        rate_limiter: Rate limiter instance.
+        concurrency_ctrl: Concurrency controller instance.
+
+    Returns:
+        StreamingResponse for stream requests, CompletionResponse otherwise.
+
+    Raises:
+        HTTPException: On validation errors.
+    """
     client_ip = req.client.host if req.client else "unknown"
     logger.info(f"Route handler reached for {endpoint_name}, model: {request.model}, client IP: {client_ip}, stream: {request.stream}")
     prompt_length = 0
@@ -237,12 +437,10 @@ async def _handle_request(
         prompt_length = len(request.prompt)
     elif isinstance(request.prompt, list):
         prompt_length = sum(len(p) for p in request.prompt)
-    
+
     logger.info(f"Request body - ID: {uuid.uuid4().hex[:8]}, Model: {request.model}, Prompt Info: {'provided' if request.prompt else 'missing'}, Prompt Length: {prompt_length}, Body Keys: {list(request.model_dump().keys())}")
 
     if request.stream:
-        # 流式：先做校验（不 acquire），校验通过后返回 StreamingResponse
-        # StreamingResponse 内部的生成器负责 acquire/release
         try:
             await _validate_request(request, req, service, api_key, rate_limiter)
             logger.info(f"Request validation passed for {endpoint_name}, preparing stream response")
@@ -255,39 +453,39 @@ async def _handle_request(
         return StreamingResponse(
             _make_stream_generator(request, service, concurrency_ctrl),
             media_type="text/event-stream",
+            headers=SSE_HEADERS,
         )
-    else:
-        logger.info(f"Processing non-stream request for {endpoint_name}, model: {request.model}")
-        result = await _handle_non_stream(
-            request, req, service, api_key, rate_limiter, concurrency_ctrl
-        )
-        logger.info(f"Non-stream request completed for {endpoint_name}, model: {request.model}")
-        return result
+
+    logger.info(f"Processing non-stream request for {endpoint_name}, model: {request.model}")
+    result = await _handle_non_stream(
+        request, req, service, api_key, rate_limiter, concurrency_ctrl
+    )
+    logger.info(f"Non-stream request completed for {endpoint_name}, model: {request.model}")
+    return result
 
 
-@router.post("/v1/completions")
+@router.post("/v1/completions", response_model=None)
 async def create_completion(
     request: CompletionRequest,
     req: Request,
     service: CompletionService = Depends(get_completion_service),
     api_key: str = Depends(get_api_key),
-    rate_limiter=Depends(get_rate_limiter_dep),
-    concurrency_ctrl=Depends(get_concurrency_controller_dep),
-):
+    rate_limiter: Any = Depends(get_rate_limiter_dep),
+    concurrency_ctrl: Any = Depends(get_concurrency_controller_dep),
+) -> Any:
+    """OpenAI-compatible completions endpoint.
+
+    Args:
+        request: Completion request data.
+        req: FastAPI request object.
+        service: Completion service instance.
+        api_key: Validated API key.
+        rate_limiter: Rate limiter instance.
+        concurrency_ctrl: Concurrency controller instance.
+
+    Returns:
+        StreamingResponse for stream requests, CompletionResponse otherwise.
+    """
     return await _handle_request(
         "/v1/completions", request, req, service, api_key, rate_limiter, concurrency_ctrl
-    )
-
-
-@router.post("/completion")
-async def legacy_completion(
-    request: CompletionRequest,
-    req: Request,
-    service: CompletionService = Depends(get_completion_service),
-    api_key: str = Depends(get_api_key),
-    rate_limiter=Depends(get_rate_limiter_dep),
-    concurrency_ctrl=Depends(get_concurrency_controller_dep),
-):
-    return await _handle_request(
-        "/completion", request, req, service, api_key, rate_limiter, concurrency_ctrl
     )

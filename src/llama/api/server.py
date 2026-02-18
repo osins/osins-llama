@@ -14,6 +14,7 @@ from src.llama.api.chat_routes import router as chat_router
 from src.llama.api.models_routes import router as models_router
 from src.llama.api.embeddings_routes import router as embeddings_router
 from src.llama.api.custom_routes import router as custom_router
+from src.llama.api.llama_completion_routes import router as llama_completion_router
 from src.llama.core.model_manager import ModelManager
 from src.llama.config.config import Config
 from src.llama.exceptions.service_error import ServiceError
@@ -66,6 +67,7 @@ def create_app(config: Config):
     app.include_router(models_router, tags=["models"])  # Already prefixed with /v1 in routes file
     app.include_router(embeddings_router, tags=["embeddings"])  # Already prefixed with /v1 in routes file
     app.include_router(custom_router)  # No prefix for custom endpoints like /props
+    app.include_router(llama_completion_router, tags=["llama.cpp"])  # llama.cpp compatible endpoint
 
     @app.get("/", include_in_schema=False)
     def read_root():
@@ -144,6 +146,8 @@ def parse_args():
     parser.add_argument("--model-path", type=str, default=None, help="Path to model file")
     parser.add_argument("--n-ctx", type=int, default=None, help="Context length")
     parser.add_argument("--n-threads", type=int, default=None, help="Number of threads")
+    parser.add_argument("--n-gpu-layers", type=int, default=None, help="Number of GPU layers (-1 for all)")
+    parser.add_argument("--n-batch", type=int, default=None, help="Batch size for GPU")
     parser.add_argument("--api-keys", type=str, default=None, help="API key list (comma separated)")
     parser.add_argument("--max-concurrent-requests", type=int, default=None, help="Max concurrent requests")
     parser.add_argument("--rate-limit-requests", type=int, default=None, help="Rate limit requests per window")
@@ -155,7 +159,6 @@ def parse_args():
 
 def merge_config_with_args(config: Config, args) -> Config:
     """Merge configuration with command line arguments"""
-    # Override service config with command line args if provided
     if args.host is not None:
         config.service.host = args.host
     if args.port is not None:
@@ -163,15 +166,17 @@ def merge_config_with_args(config: Config, args) -> Config:
     if args.debug:
         config.service.debug = args.debug
         
-    # Override model config with command line args if provided
     if args.model_path is not None:
         config.model.path = args.model_path
     if args.n_ctx is not None:
         config.model.n_ctx = args.n_ctx
     if args.n_threads is not None:
         config.model.n_threads = args.n_threads
+    if args.n_gpu_layers is not None:
+        config.model.n_gpu_layers = args.n_gpu_layers
+    if args.n_batch is not None:
+        config.model.n_batch = args.n_batch
         
-    # Override security config with command line args if provided
     if args.api_keys is not None:
         api_keys_list = [key.strip() for key in args.api_keys.split(",") if key.strip()]
         config.security.api_keys = api_keys_list

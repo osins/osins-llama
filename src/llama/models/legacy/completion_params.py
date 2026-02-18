@@ -15,7 +15,7 @@ class CompletionParams(BaseDataModel):
     """
     model_config = ConfigDict(extra="forbid", frozen=True)  # 禁止额外字段，启用frozen
 
-    model: str = Field(..., min_length=1, max_length=255)
+    model: Optional[str] = Field(default="", min_length=0, max_length=255)
     prompt: Union[str, List[str]] = Field(..., max_length=100000)
     max_tokens: Optional[Union[int, str]] = Field(default=16, description="限制最大token数")
     max_new_tokens: Optional[Union[int, str]] = Field(default=16, description="限制最大新token数")

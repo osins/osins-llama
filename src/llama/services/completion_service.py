@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Dict, Any
 
 from src.llama.core.model_manager import ModelManager, filter_llama_params
 from src.llama.config.config import Config
@@ -9,7 +9,6 @@ from src.llama.models.legacy.completion_response import CompletionResponse
 from src.llama.models.common.stream_chunk import StreamChunk
 from src.llama.exceptions.service_error import ServiceError
 from src.llama.core.logger_manager import logger
-
 import threading
 
 
@@ -32,7 +31,7 @@ _PARAM_ALIAS_MAP = {
 }
 
 
-def _build_llama_params(request: CompletionRequest) -> dict:
+def _build_llama_params(request: CompletionRequest) -> Dict[str, Any]:
     """
     将 CompletionRequest 转换为 llama-cpp-python 支持的参数字典。
 
@@ -103,96 +102,92 @@ class CompletionService:
                     cls._instance = cls(config)
         return cls._instance
 
-    # ------------------------------------------------------------------
-    # 流式生成
-    # ------------------------------------------------------------------
     async def generate_stream(
         self, request: CompletionRequest
-    ) -> AsyncGenerator[StreamChunk, None]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        流式文本生成，逐 chunk yield StreamChunk
+        流式文本生成，逐 chunk yield 官方llama.cpp格式的字典
+
+        Args:
+            request: Completion request data.
+
+        Yields:
+            Token chunk dictionaries in OpenAI format.
         """
-        from src.llama.core.logger_manager import logger
-        logger.info(f"CompletionService.generate_stream called for model: {request.model}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
-        
+        model_name = request.model if request.model else self.model_manager.get_model_name()
+        logger.info(f"CompletionService.generate_stream called for model: {model_name}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
+
         model = self.model_manager.get_model()
         if model is None:
             raise ServiceError("Model not loaded")
 
         prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
         params = _build_llama_params(request)
-        
-        # 降低 temperature 以提高生成稳定性
+
         if "temperature" in params and params["temperature"] > 1.0:
-            params["temperature"] = 1.0  # 从1.5降低到1.0
-        
+            params["temperature"] = 1.0
+
         request_id = f"cmpl-{uuid.uuid4().hex[:8]}"
-        created    = int(time.time())
-        index      = 0
-        
-        # 记录开始生成的时间
+        created = int(time.time())
+        index = 0
+
         start_time = time.time()
         logger.info(f"Starting stream generation for request {request_id}, params: {list(params.keys())}")
 
         try:
-            async for text in self.model_manager.stream_generate(prompt, params):
-                yield StreamChunk(
-                    id=request_id,
-                    object="text_completion.chunk",
-                    created=created,
-                    model=request.model,
-                    choices=[{
-                        "text":          text,
-                        "index":         index,
-                        "logprobs":      None,
-                        "finish_reason": None,
-                    }],
-                )
+            async for chunk in self.model_manager.stream_generate(prompt, params):
+                choices = chunk.get("choices", [])
+                if choices:
+                    choices[0]["index"] = index
+                chunk["id"] = request_id
+                chunk["created"] = created
+                chunk["model"] = model_name
+                yield chunk
                 index += 1
 
-            # 最后发送 finish chunk
             elapsed_time = time.time() - start_time
             logger.info(f"Stream generation completed for request {request_id}, total chunks: {index}, elapsed time: {elapsed_time:.2f}s")
-            
-            yield StreamChunk(
-                id=request_id,
-                object="text_completion.chunk",
-                created=created,
-                model=request.model,
-                choices=[{
-                    "text":          "",
-                    "index":         index,
-                    "logprobs":      None,
-                    "finish_reason": "stop",
+
+            yield {
+                "choices": [{
+                    "text": "",
+                    "index": index,
+                    "logprobs": None,
+                    "finish_reason": "length"
                 }],
-            )
+                "created": created,
+                "model": model_name,
+                "object": "text_completion",
+                "id": request_id
+            }
 
         except Exception as e:
             logger.error(f"CompletionService.generate_stream error: {e}", exc_info=True)
             raise ServiceError(f"Model generation failed: {e}")
 
-    # ------------------------------------------------------------------
-    # 非流式生成
-    # ------------------------------------------------------------------
     async def generate(self, request: CompletionRequest) -> CompletionResponse:
         """
         非流式文本生成，返回完整 CompletionResponse
+
+        Args:
+            request: Completion request data.
+
+        Returns:
+            CompletionResponse with generated text.
         """
-        from src.llama.core.logger_manager import logger
-        logger.info(f"CompletionService.generate called for model: {request.model}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
-        
+        model_name = request.model if request.model else self.model_manager.get_model_name()
+        logger.info(f"CompletionService.generate called for model: {model_name}, prompt length: {len(request.prompt) if isinstance(request.prompt, str) else len(request.prompt[0])}")
+
         model = self.model_manager.get_model()
         if model is None:
             raise ServiceError("Model not loaded")
 
         prompt = request.prompt if isinstance(request.prompt, str) else request.prompt[0]
         params = _build_llama_params(request)
-        
-        # 降低 temperature 以提高生成稳定性
-        if "temperature" in params and params["temperature"] > 1.0:
-            params["temperature"] = 1.0  # 从1.5降低到1.0
 
-        # 记录开始生成的时间
+        if "temperature" in params and params["temperature"] > 1.0:
+            params["temperature"] = 1.0
+
         start_time = time.time()
         logger.info(f"Starting non-stream generation for params: {list(params.keys())}")
 
@@ -202,31 +197,29 @@ class CompletionService:
             logger.error(f"CompletionService.generate error: {e}", exc_info=True)
             raise ServiceError(f"Model generation failed: {e}")
 
-        # 记录生成完成的时间
         elapsed_time = time.time() - start_time
         logger.info(f"Non-stream generation completed, elapsed time: {elapsed_time:.2f}s")
 
-        # 解析 llama-cpp-python 返回的原始 dict
         choices = result.get("choices", [])
-        usage   = result.get("usage", {})
+        usage = result.get("usage", {})
 
         return CompletionResponse(
             id=result.get("id", f"cmpl-{uuid.uuid4().hex[:8]}"),
             object="text_completion",
             created=result.get("created", int(time.time())),
-            model=request.model,
+            model=model_name,
             choices=[
                 {
-                    "text":          c.get("text", ""),
-                    "index":         c.get("index", 0),
-                    "logprobs":      c.get("logprobs"),
+                    "text": c.get("text", ""),
+                    "index": c.get("index", 0),
+                    "logprobs": c.get("logprobs"),
                     "finish_reason": c.get("finish_reason", "stop"),
                 }
                 for c in choices
             ],
             usage={
-                "prompt_tokens":     usage.get("prompt_tokens", 0),
+                "prompt_tokens": usage.get("prompt_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens", 0),
-                "total_tokens":      usage.get("total_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
             },
         )

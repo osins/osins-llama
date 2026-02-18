@@ -9,6 +9,8 @@ class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 31301
     model_path: Optional[Path] = None
+    n_gpu_layers: int = -1
+    n_batch: int = 512
 
 
 class ConfigManager:

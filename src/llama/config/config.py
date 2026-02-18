@@ -51,8 +51,10 @@ class Config(BaseModel):
         return cls(
             model=ModelConfig(
                 path=model_path,
-                n_ctx=max(1, min(int(os.getenv("LLAMA_N_CTX", "2048")), 100000)),  # 限制上下文长度范围
-                n_threads=max(1, min(int(os.getenv("LLAMA_N_THREADS", "8")), 64)),  # 限制线程数范围
+                n_ctx=max(1, min(int(os.getenv("LLAMA_N_CTX", "2048")), 100000)),
+                n_threads=max(1, min(int(os.getenv("LLAMA_N_THREADS", "8")), 64)),
+                n_gpu_layers=max(-1, min(int(os.getenv("LLAMA_N_GPU_LAYERS", "-1")), 200)),
+                n_batch=max(1, min(int(os.getenv("LLAMA_N_BATCH", "512")), 4096)),
                 verbose=os.getenv("LLAMA_VERBOSE", "false").lower() == "true"
             ),
             resources=ResourcesConfig(
