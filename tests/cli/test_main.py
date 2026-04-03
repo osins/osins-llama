@@ -2,8 +2,8 @@
 import pytest
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
-from src.llama.cli.main import main, check_command_dependencies, CircularDependencyError, UnknownCommandError, MissingDependencyError
-from src.llama.cli.context import CLIContext
+from llama.cli.main import main, check_command_dependencies, CircularDependencyError, UnknownCommandError, MissingDependencyError
+from llama.cli.context import CLIContext
 
 
 @pytest.fixture

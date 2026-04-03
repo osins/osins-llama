@@ -4,8 +4,8 @@ import asyncio
 import time
 from typing import Callable, Any, Optional
 from asyncio import Semaphore
-from src.llama.config.config import Config
-from src.llama.core.logger_manager import logger
+from llama.config.config import Config
+from llama.core.logger_manager import logger
 
 
 class RequestScheduler:

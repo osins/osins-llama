@@ -4,22 +4,22 @@ from typing import AsyncGenerator, Union
 import asyncio
 import time
 
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
-from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
-from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
-from src.llama.services.chat_service import ChatService
-from src.llama.core.security import (
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.chat.chat_completion_response import ChatCompletionResponse
+from llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+from llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+from llama.models.chat.chat_completion_delta import ChatCompletionDelta
+from llama.services.chat_service import ChatService
+from llama.core.security import (
     verify_api_key,
     get_rate_limiter,
     get_concurrency_controller
 )
-from src.llama.utils.token_utils import count_tokens_in_messages
-from src.llama.exceptions import ValidationError, RateLimitError, ServiceError, AuthenticationError
+from llama.utils.token_utils import count_tokens_in_messages
+from llama.exceptions import ValidationError, RateLimitError, ServiceError, AuthenticationError
 
 
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 router = APIRouter()
 

@@ -1,7 +1,7 @@
 """日志管理工具"""
 from pathlib import Path
 import sys
-from src.llama.core.logger_manager import LoggerManager
+from llama.core.logger_manager import LoggerManager
 
 
 def setup_logger(

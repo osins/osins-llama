@@ -1,7 +1,7 @@
 import time
 from collections import deque
 from typing import Optional
-from src.llama.config.config import Config
+from llama.config.config import Config
 
 
 class RateLimiter:

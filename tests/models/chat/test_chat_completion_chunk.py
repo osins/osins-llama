@@ -1,10 +1,10 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
-from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.common.usage import Usage
+from llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+from llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+from llama.models.chat.chat_completion_delta import ChatCompletionDelta
+from llama.models.chat.chat_role import ChatRole
+from llama.models.common.usage import Usage
 
 
 class TestChatCompletionChunk:

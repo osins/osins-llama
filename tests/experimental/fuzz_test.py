@@ -8,12 +8,12 @@ from typing import Any, Dict, List
 from hypothesis import given, strategies as st
 import pytest
 
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.common.usage import Usage
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.chat.chat_content_part import ChatContentPart
-from src.llama.models.chat.content_type import ContentType
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.common.usage import Usage
+from llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_content_part import ChatContentPart
+from llama.models.chat.content_type import ContentType
 
 
 def generate_random_string(min_length: int = 1, max_length: int = 1000) -> str:

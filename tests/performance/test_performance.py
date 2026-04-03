@@ -4,10 +4,10 @@ import pytest
 from concurrent.futures import ThreadPoolExecutor
 import requests
 import threading
-from src.llama.services.chat_service import ChatService
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_role import ChatRole
+from llama.services.chat_service import ChatService
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_role import ChatRole
 
 
 class TestPerformance:
@@ -95,7 +95,7 @@ class TestPerformance:
 
 def test_token_calculation_performance():
     """测试token计算性能"""
-    from src.llama.utils.token_utils import count_tokens
+    from llama.utils.token_utils import count_tokens
     
     # 测试短文本
     short_text = "Hello world"

@@ -1,8 +1,8 @@
 import pytest
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock
-from src.llama.services.scheduler import RequestScheduler, ConcurrentRequestLimiter
-from src.llama.config.config import Config
+from llama.services.scheduler import RequestScheduler, ConcurrentRequestLimiter
+from llama.config.config import Config
 
 
 @pytest.fixture

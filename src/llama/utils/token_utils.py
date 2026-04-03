@@ -1,7 +1,7 @@
 from typing import Union, List
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.exceptions import ValidationError
-from src.llama.core.logger_manager import logger
+from llama.models.chat.chat_message import ChatMessage
+from llama.exceptions import ValidationError
+from llama.core.logger_manager import logger
 
 
 def count_tokens(text: Union[str, None]) -> int:

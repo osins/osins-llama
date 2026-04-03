@@ -1,5 +1,5 @@
 import pytest
-from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
+from llama.models.legacy.completion_finish_reason import CompletionFinishReason
 
 
 class TestCompletionFinishReason:

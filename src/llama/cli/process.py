@@ -11,7 +11,7 @@ from .exceptions import ProcessAlreadyRunning
 from .pid_file_manager import PidFileManager  # 修改导入路径
 from ..models.pid_data import PidData
 from ..utils.pid_tools import wait_for_port, find_pid_by_port, wait_for_pid_by_port
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 class ProcessManager:

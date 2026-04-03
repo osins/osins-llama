@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.legacy.completion_stream_delta import CompletionStreamDelta
-from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
+from llama.models.legacy.completion_stream_delta import CompletionStreamDelta
+from llama.models.legacy.completion_finish_reason import CompletionFinishReason
 
 
 class TestCompletionStreamDelta:

@@ -7,8 +7,8 @@ import time
 import psutil
 from .pid_file_manager import PidFileManager
 from .process import ProcessManager
-from src.llama.utils.pid_tools import find_pid_by_port, is_process_running
-from src.llama.core.logger_manager import LoggerManager
+from llama.utils.pid_tools import find_pid_by_port, is_process_running
+from llama.core.logger_manager import LoggerManager
 
 
 def execute_stop(force: bool = False) -> int:
@@ -55,12 +55,12 @@ def stop(force: bool, verbose: bool):
     # 如果verbose标志为真，启用调试模式
     if verbose:
         # 设置logger的调试模式
-        from src.llama.core.logger_manager import LoggerManager
+        from llama.core.logger_manager import LoggerManager
         global logger
         logger = LoggerManager(debug=True)
     else:
         # 导入默认的logger实例
-        from src.llama.core.logger_manager import logger as default_logger
+        from llama.core.logger_manager import logger as default_logger
         logger = default_logger
 
     try:

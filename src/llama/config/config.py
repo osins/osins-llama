@@ -6,7 +6,7 @@ from .model_config import ModelConfig
 from .resources_config import ResourcesConfig
 from .security_config import SecurityConfig
 from .service_config import ServiceConfig
-from src.llama.core.logger_manager import logger
+from ..core.logger_manager import logger
 
 
 class Config(BaseModel):

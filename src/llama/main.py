@@ -1,14 +1,14 @@
 import click
-from src.llama.core.commands.start import start
-from src.llama.core.commands.restart import restart
-from src.llama.core.commands.down import down
-from src.llama.core.commands.status import status
-from src.llama.core.commands.logs import logs
+from llama.core.commands.start import start
+from llama.core.commands.restart import restart
+from llama.core.commands.down import down
+from llama.core.commands.status import status
+from llama.core.commands.logs import logs
 
 
 @click.group()
 def cli():
-    """Llama CLI - A tool for managing and running LLM models with llama_cpp."""
+    """Llama CLI - A tool for managing and running LLM models with OpenAI-compatible API."""
     pass
 
 

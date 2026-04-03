@@ -4,9 +4,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from unittest.mock import patch, MagicMock
-from src.llama.core.rate_limiter import RateLimiter
-from src.llama.config.config import Config
-from src.llama.core.security import ConcurrencyController
+from llama.core.rate_limiter import RateLimiter
+from llama.config.config import Config
+from llama.core.security import ConcurrencyController
 
 
 class TestConcurrency:

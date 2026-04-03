@@ -5,19 +5,19 @@ sys.path.insert(0, os.path.abspath('.'))
 # 简单测试新创建的模块是否可以导入
 def test_imports():
     try:
-        from src.llama.services.scheduler import RequestScheduler, ConcurrentRequestLimiter
+        from llama.services.scheduler import RequestScheduler, ConcurrentRequestLimiter
         print("[OK] Scheduler module imported successfully")
     except ImportError as e:
         print(f"[ERROR] Failed to import scheduler: {e}")
         
     try:
-        from src.llama.middlewares.logging_middleware import LoggingMiddleware
+        from llama.middlewares.logging_middleware import LoggingMiddleware
         print("[OK] Logging middleware imported successfully")
     except ImportError as e:
         print(f"[ERROR] Failed to import logging middleware: {e}")
         
     try:
-        from src.llama.utils.token_utils import count_tokens, count_tokens_in_messages
+        from llama.utils.token_utils import count_tokens, count_tokens_in_messages
         print("[OK] Token utils imported successfully")
     except ImportError as e:
         print(f"[ERROR] Failed to import token utils: {e}")
@@ -32,7 +32,7 @@ def test_imports():
     # 测试调度器基本功能
     try:
         import asyncio
-        from src.llama.config.config import Config
+        from llama.config.config import Config
         
         async def test_scheduler():
             config = Config.from_env()

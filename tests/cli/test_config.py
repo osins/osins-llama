@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import json
 from unittest.mock import patch, mock_open
-from src.llama.cli.config import load_config, save_config, execute_show, execute_set, execute_reset
+from llama.cli.config import load_config, save_config, execute_show, execute_set, execute_reset
 
 
 class TestConfigCommands(unittest.TestCase):

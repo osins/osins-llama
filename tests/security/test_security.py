@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import patch, MagicMock
-from src.llama.core.security import verify_api_key
+from llama.core.security import verify_api_key
 from fastapi import HTTPException, Request
 from starlette.datastructures import Headers
 
@@ -84,7 +84,7 @@ class TestSecurity:
     
     def test_multiple_api_keys(self):
         """测试多个API密钥"""
-        from src.llama.config.config import Config
+        from llama.config.config import Config
         
         # 创建配置对象并设置多个API密钥
         config = Config.from_env()

@@ -1,10 +1,10 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.chat.chat_content_part import ChatContentPart, ContentType
-from src.llama.models.chat.tool_call import ToolCall
-from src.llama.models.chat.tool_call_function import FunctionCall
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_content_part import ChatContentPart, ContentType
+from llama.models.chat.tool_call import ToolCall
+from llama.models.chat.tool_call_function import FunctionCall
 
 
 class TestChatMessage:

@@ -3,7 +3,7 @@ import click
 import requests
 import sys
 import re
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 def validate_api_url(ctx, param, value):

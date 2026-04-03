@@ -1,30 +1,30 @@
 """
 验证脚本 - 确认所有数据模型都能正常工作
 """
-from src.llama.models.common.usage import Usage
-from src.llama.models.common.error_response import ErrorResponse
-from src.llama.models.common.error_model import ErrorModel
-from src.llama.models.legacy.completion_params import CompletionParams
-from src.llama.models.legacy.completion_request import CompletionRequest
-from src.llama.models.legacy.completion_choice import CompletionChoice
-from src.llama.models.legacy.completion_response import CompletionResponse
-from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
-from src.llama.models.legacy.completion_stream_delta import CompletionStreamDelta
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.chat.chat_content_part import ChatContentPart
-from src.llama.models.chat.content_type import ContentType
-from src.llama.models.chat.image_url import ImageUrl
-from src.llama.models.chat.image_detail import ImageDetail
-from src.llama.models.chat.tool_call_function import FunctionCall
-from src.llama.models.chat.tool_call import ToolCall
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_finish_reason import ChatFinishReason
-from src.llama.models.chat.chat_completion_choice import ChatCompletionChoice
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
-from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
-from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+from llama.models.common.usage import Usage
+from llama.models.common.error_response import ErrorResponse
+from llama.models.common.error_model import ErrorModel
+from llama.models.legacy.completion_params import CompletionParams
+from llama.models.legacy.completion_request import CompletionRequest
+from llama.models.legacy.completion_choice import CompletionChoice
+from llama.models.legacy.completion_response import CompletionResponse
+from llama.models.legacy.completion_finish_reason import CompletionFinishReason
+from llama.models.legacy.completion_stream_delta import CompletionStreamDelta
+from llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_content_part import ChatContentPart
+from llama.models.chat.content_type import ContentType
+from llama.models.chat.image_url import ImageUrl
+from llama.models.chat.image_detail import ImageDetail
+from llama.models.chat.tool_call_function import FunctionCall
+from llama.models.chat.tool_call import ToolCall
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_finish_reason import ChatFinishReason
+from llama.models.chat.chat_completion_choice import ChatCompletionChoice
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.chat.chat_completion_response import ChatCompletionResponse
+from llama.models.chat.chat_completion_delta import ChatCompletionDelta
+from llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+from llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
 
 
 def test_common_models():

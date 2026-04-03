@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from src.llama.middlewares.logging_middleware import LoggingMiddleware, setup_logging_config
+from llama.middlewares.logging_middleware import LoggingMiddleware, setup_logging_config
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import time
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 PUBLIC_PATHS = {

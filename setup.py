@@ -27,8 +27,9 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "llama-cpp-python~=0.2.0",
         "click~=8.1.0",
+        "fastapi>=0.100.0",
+        "uvicorn>=0.20.0",
     ],
     entry_points={
         "console_scripts": [

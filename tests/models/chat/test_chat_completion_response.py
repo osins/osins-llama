@@ -1,11 +1,11 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
-from src.llama.models.chat.chat_completion_choice import ChatCompletionChoice
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.chat.chat_finish_reason import ChatFinishReason
-from src.llama.models.common.usage import Usage
+from llama.models.chat.chat_completion_response import ChatCompletionResponse
+from llama.models.chat.chat_completion_choice import ChatCompletionChoice
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_finish_reason import ChatFinishReason
+from llama.models.common.usage import Usage
 
 
 class TestChatCompletionResponse:

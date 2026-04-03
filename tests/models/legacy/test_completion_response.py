@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.legacy.completion_response import CompletionResponse
-from src.llama.models.legacy.completion_choice import CompletionChoice
-from src.llama.models.legacy.completion_finish_reason import CompletionFinishReason
-from src.llama.models.common.usage import Usage
+from llama.models.legacy.completion_response import CompletionResponse
+from llama.models.legacy.completion_choice import CompletionChoice
+from llama.models.legacy.completion_finish_reason import CompletionFinishReason
+from llama.models.common.usage import Usage
 
 
 class TestCompletionResponse:

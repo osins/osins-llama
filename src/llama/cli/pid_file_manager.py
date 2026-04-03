@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Optional, List
 from contextlib import contextmanager
-from src.llama.models.pid_data import PidData
+from llama.models.pid_data import PidData
 import uuid
 import hashlib
 

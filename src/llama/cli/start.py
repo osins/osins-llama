@@ -166,7 +166,7 @@ def validate_and_check_pid_file(pid_file: Path) -> None:
                     pass
 
                 if is_json and port:
-                    from src.llama.utils.pid_tools import find_pid_by_port
+                    from llama.utils.pid_tools import find_pid_by_port
                     port_pid = find_pid_by_port(port)
                     
                     if port_pid:
@@ -472,7 +472,7 @@ def start(
         config_manager = ConfigManager(config_path)
         config = config_manager.load(cli_overrides=cli_overrides)
 
-        from src.llama.utils.pid_tools import find_pid_by_port
+        from llama.utils.pid_tools import find_pid_by_port
         port_pid = find_pid_by_port(config.port)
         if port_pid:
             click.echo(f"Error: Port {config.port} is already in use by process with PID {port_pid}")

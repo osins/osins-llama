@@ -3,12 +3,12 @@ import asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 import json
-from src.llama.api.server import create_app
-from src.llama.config.config import Config
-from src.llama.models.legacy.completion_request import CompletionRequest
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_role import ChatRole
+from llama.api.server import create_app
+from llama.config.config import Config
+from llama.models.legacy.completion_request import CompletionRequest
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_role import ChatRole
 
 
 @pytest.fixture

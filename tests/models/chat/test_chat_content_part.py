@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.chat.chat_content_part import ChatContentPart, ContentType
-from src.llama.models.chat.content_type import ContentType
-from src.llama.models.chat.image_url import ImageUrl
-from src.llama.models.chat.image_detail import ImageDetail
+from llama.models.chat.chat_content_part import ChatContentPart, ContentType
+from llama.models.chat.content_type import ContentType
+from llama.models.chat.image_url import ImageUrl
+from llama.models.chat.image_detail import ImageDetail
 
 
 class TestChatContentPart:

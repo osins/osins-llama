@@ -1,8 +1,8 @@
 import pytest
-from src.llama.utils.token_utils import count_tokens, count_tokens_in_messages, count_completion_tokens
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.exceptions import ValidationError
+from llama.utils.token_utils import count_tokens, count_tokens_in_messages, count_completion_tokens
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_role import ChatRole
+from llama.exceptions import ValidationError
 
 
 class TestTokenUtilsEdgeCases:

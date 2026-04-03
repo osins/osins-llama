@@ -1,12 +1,1 @@
-{
-  "server_info": {
-    "status": "running",
-    "version": "0.1.0",
-    "api_compatibility": "OpenAI-compatible",
-    "supported_endpoints": [
-      "/v1/chat/completions",
-      "/v1/completions"
-    ],
-    "timestamp": "2026-02-12T00:00:00Z"
-  }
-}
+{"port": 31301, "host": "0.0.0.0", "model": "external", "pid": 53320, "n_ctx": 32768, "n_threads": 8, "api_keys": []}

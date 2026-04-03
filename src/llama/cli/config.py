@@ -6,7 +6,7 @@ import click
 from typing import Optional
 
 from ..utils.security_utils import validate_config_path
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 CONFIG_FILE = Path("./llama_config.json")

@@ -8,7 +8,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 import json
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):

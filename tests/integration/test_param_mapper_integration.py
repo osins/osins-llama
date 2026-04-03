@@ -3,7 +3,7 @@
 """
 
 import pytest
-from src.llama.core.param_mapper import map_to_llama_params
+from llama.core.param_mapper import map_to_llama_params
 
 
 def test_sillytavern_request_parameters():

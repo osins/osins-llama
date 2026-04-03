@@ -4,15 +4,15 @@ import base64
 import struct
 from typing import List, Union, Optional
 from pathlib import Path
-from src.llama.core.model_manager import ModelManager
-from src.llama.config.config import Config
-from src.llama.models.embeddings.embedding_response import (
+from llama.core.model_manager import ModelManager
+from llama.config.config import Config
+from llama.models.embeddings.embedding_response import (
     EmbeddingResponse,
     EmbeddingObject,
     EmbeddingUsage
 )
-from src.llama.exceptions import ServiceError
-from src.llama.core.logger_manager import logger
+from llama.exceptions import ServiceError
+from llama.core.logger_manager import logger
 
 
 class EmbeddingService:
@@ -98,6 +98,9 @@ class EmbeddingService:
         """
         创建文本嵌入向量
         
+        注意：目前llama.cpp服务器没有内置embedding功能
+        这个方法需要适应API模式 - 会在未来版本提供更完整的embedding支持
+        
         Args:
             inputs: 输入文本或文本列表
             model: 模型名称
@@ -110,73 +113,11 @@ class EmbeddingService:
         Raises:
             ServiceError: 模型不支持嵌入或生成失败
         """
-        # 获取模型实例
-        llama_model = self.model_manager.get_model()
-        if llama_model is None:
-            raise ServiceError("Model not loaded")
-        
-        # 检查模型是否支持embeddings
-        if not hasattr(llama_model, 'embed'):
-            raise ServiceError(
-                "The current model does not support embeddings. "
-                "Please use a model with embedding support (e.g., sentence-transformers models).",
-                status_code=501
-            )
-        
-        # 标准化输入为列表
-        if isinstance(inputs, str):
-            inputs = [inputs]
-        
-        embeddings_data = []
-        total_tokens = 0
-        
-        for idx, text in enumerate(inputs):
-            try:
-                # 使用llama-cpp-python的embed方法
-                # embed方法返回一个numpy数组
-                import numpy as np
-                embedding_array = llama_model.embed(text)
-                
-                # 转换为Python列表
-                embedding = embedding_array.tolist() if hasattr(embedding_array, 'tolist') else list(embedding_array)
-                
-                # 如果指定了维度，截断嵌入向量
-                if dimensions is not None:
-                    embedding = self._truncate_embedding(embedding, dimensions)
-                
-                # 根据编码格式处理嵌入向量
-                if encoding_format == "base64":
-                    embedding_output = self._encode_embedding_base64(embedding)
-                else:
-                    embedding_output = embedding
-                
-                embeddings_data.append(EmbeddingObject(
-                    object="embedding",
-                    embedding=embedding_output,
-                    index=idx
-                ))
-                
-                # 计算token数
-                total_tokens += self._count_tokens(text)
-                
-                logger.info(f"Generated embedding for input {idx}, dimension: {len(embedding)}")
-                
-            except Exception as e:
-                logger.error(f"Failed to generate embedding for input {idx}: {e}", exc_info=True)
-                raise ServiceError(f"Embedding generation failed: {str(e)}")
-        
-        # 构建响应
-        response = EmbeddingResponse(
-            object="list",
-            data=embeddings_data,
-            model=self._get_model_name(),
-            usage=EmbeddingUsage(
-                prompt_tokens=total_tokens,
-                total_tokens=total_tokens
-            )
+        # 当前暂不支持embeddings特性因为llama.cpp server API目前没有embedding endpoint
+        raise ServiceError(
+            "Embedding functionality is not supported when using direct llama.cpp server connection",
+            status_code=501
         )
-        
-        return response
     
     async def create_embeddings_fallback(
         self,
@@ -217,7 +158,7 @@ class EmbeddingService:
             try:
                 # 尝试使用tokenize获取token表示
                 if hasattr(llama_model, 'tokenize'):
-                    tokens = llama_model.tokenize(text.encode('utf-8'))
+                    tokens = llama_model.tokenize(text)
                     total_tokens += len(tokens)
                 else:
                     total_tokens += self._count_tokens(text)

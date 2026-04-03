@@ -6,7 +6,7 @@ import os
 import stat
 from pathlib import Path
 
-from src.llama.cli.start import start, secure_open_model, validate_host, parse_api_keys, validate_and_check_pid_file
+from llama.cli.start import start, secure_open_model, validate_host, parse_api_keys, validate_and_check_pid_file
 
 
 @pytest.fixture

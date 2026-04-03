@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 from typing import Optional
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 def ensure_log_dir(path: Path) -> None:

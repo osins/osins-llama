@@ -2,10 +2,10 @@
 Schema版本跟踪测试
 验证模型版本跟踪功能是否正常工作
 """
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.common.usage import Usage
-from src.llama.models.version_tracker import SchemaVersionTracker, MODEL_SCHEMA_HASHES, register_model_for_version_tracking
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.common.usage import Usage
+from llama.models.version_tracker import SchemaVersionTracker, MODEL_SCHEMA_HASHES, register_model_for_version_tracking
 
 
 def test_schema_version_tracking():

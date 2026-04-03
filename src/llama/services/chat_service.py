@@ -1,15 +1,15 @@
 from typing import AsyncGenerator
 from fastapi import Request
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.chat.chat_completion_response import ChatCompletionResponse
-from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-from src.llama.core.model_manager import ModelManager
-from src.llama.config.config import Config
-from src.llama.utils.token_utils import count_tokens_in_messages
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.chat.chat_completion_response import ChatCompletionResponse
+from llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+from llama.core.model_manager import ModelManager
+from llama.config.config import Config
+from llama.utils.token_utils import count_tokens_in_messages
 import asyncio
 import time
 import uuid
-from src.llama.exceptions import ServiceError
+from llama.exceptions import ServiceError
 
 
 class ChatService:
@@ -97,7 +97,7 @@ class ChatService:
         Returns:
             ChatCompletionResponse: 完整的响应对象
         """
-        from src.llama.core.logger_manager import logger
+        from llama.core.logger_manager import logger
         logger.info(f"ChatService.generate called for model: {request.model}, messages count: {len(request.messages)}")
 
         try:
@@ -138,7 +138,7 @@ class ChatService:
                 }
 
                 # 应用参数过滤
-                from src.llama.core.model_manager import filter_llama_params
+                from llama.core.model_manager import filter_llama_params
                 model_kwargs = filter_llama_params(raw_kwargs)
                 
                 # 降低 temperature 以提高生成稳定性
@@ -170,17 +170,17 @@ class ChatService:
                     if not isinstance(choice, dict):
                         raise ServiceError(f"Invalid choice format at index {idx}")
 
-                    from src.llama.models.chat.chat_completion_choice import ChatCompletionChoice
-                    from src.llama.models.chat.chat_message import ChatMessage
-                    from src.llama.models.chat.chat_role import ChatRole
-                    from src.llama.models.chat.chat_finish_reason import ChatFinishReason
+                    from llama.models.chat.chat_completion_choice import ChatCompletionChoice
+                    from llama.models.chat.chat_message import ChatMessage
+                    from llama.models.chat.chat_role import ChatRole
+                    from llama.models.chat.chat_finish_reason import ChatFinishReason
 
                     message_content = choice.get("message", {}).get("content", "")
                     finish_reason_str = choice.get("finish_reason", "stop")
                     
                     # 验证response_format
                     if request.response_format:
-                        from src.llama.services.response_format_service import ResponseFormatService
+                        from llama.services.response_format_service import ResponseFormatService
                         try:
                             # 提取JSON内容
                             message_content = ResponseFormatService.extract_json_from_response(message_content)
@@ -210,7 +210,7 @@ class ChatService:
                     choices.append(chat_choice)
 
             # 计算用量
-            from src.llama.models.common.usage import Usage
+            from llama.models.common.usage import Usage
             prompt_tokens = count_tokens_in_messages(request.messages)
             completion_tokens = sum(
                 count_tokens_in_messages([choice.message]) for choice in choices
@@ -251,7 +251,7 @@ class ChatService:
         Yields:
             ChatCompletionChunk: 流式数据块
         """
-        from src.llama.core.logger_manager import logger
+        from llama.core.logger_manager import logger
         logger.info(f"ChatService.generate_stream called for model: {request.model}, messages count: {len(request.messages)}")
 
         try:
@@ -289,7 +289,7 @@ class ChatService:
                 }
 
                 # 应用参数过滤
-                from src.llama.core.model_manager import filter_llama_params
+                from llama.core.model_manager import filter_llama_params
                 model_kwargs = filter_llama_params(raw_kwargs)
                 
                 # 降低 temperature 以提高生成稳定性
@@ -337,10 +337,10 @@ class ChatService:
                         full_content += delta_content
 
                         # 创建流式数据块
-                        from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-                        from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
-                        from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
-                        from src.llama.models.chat.chat_role import ChatRole
+                        from llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+                        from llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+                        from llama.models.chat.chat_completion_delta import ChatCompletionDelta
+                        from llama.models.chat.chat_role import ChatRole
 
                         delta = ChatCompletionDelta(content=delta_content, role=ChatRole.ASSISTANT)
 
@@ -364,10 +364,10 @@ class ChatService:
                 raise ServiceError(f"Stream processing failed: {str(e)}")
 
             # 发送结束块
-            from src.llama.models.chat.chat_completion_chunk import ChatCompletionChunk
-            from src.llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
-            from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
-            from src.llama.models.common.usage import Usage
+            from llama.models.chat.chat_completion_chunk import ChatCompletionChunk
+            from llama.models.chat.chat_completion_chunk_choice import ChatCompletionChunkChoice
+            from llama.models.chat.chat_completion_delta import ChatCompletionDelta
+            from llama.models.common.usage import Usage
 
             end_delta = ChatCompletionDelta(content=None, role=None)
             end_choice = ChatCompletionChunkChoice(
@@ -469,7 +469,7 @@ class ChatService:
         
         # 添加JSON格式提示
         if response_format:
-            from src.llama.services.response_format_service import ResponseFormatService
+            from llama.services.response_format_service import ResponseFormatService
             formatted += ResponseFormatService.build_json_prompt_suffix(response_format)
         
         # 添加工具定义提示

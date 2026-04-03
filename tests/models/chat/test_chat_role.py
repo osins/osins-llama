@@ -1,5 +1,5 @@
 import pytest
-from src.llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_role import ChatRole
 
 
 class TestChatRole:

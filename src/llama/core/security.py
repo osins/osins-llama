@@ -6,7 +6,7 @@ import time
 import hashlib
 import redis
 from typing import Optional
-from src.llama.config.config import Config
+from llama.config.config import Config
 from .rate_limiter import get_rate_limiter
 
 

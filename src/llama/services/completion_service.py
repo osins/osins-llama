@@ -2,13 +2,13 @@ import time
 import uuid
 from typing import AsyncGenerator, Optional, Dict, Any
 
-from src.llama.core.model_manager import ModelManager, filter_llama_params
-from src.llama.config.config import Config
-from src.llama.models.legacy.completion_request import CompletionRequest
-from src.llama.models.legacy.completion_response import CompletionResponse
-from src.llama.models.common.stream_chunk import StreamChunk
-from src.llama.exceptions.service_error import ServiceError
-from src.llama.core.logger_manager import logger
+from llama.core.model_manager import ModelManager, filter_llama_params
+from llama.config.config import Config
+from llama.models.legacy.completion_request import CompletionRequest
+from llama.models.legacy.completion_response import CompletionResponse
+from llama.models.common.stream_chunk import StreamChunk
+from llama.exceptions.service_error import ServiceError
+from llama.core.logger_manager import logger
 import threading
 
 

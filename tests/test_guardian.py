@@ -7,9 +7,9 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.llama.services.guardian import GuardianService, GuardianConfig
-from src.llama.cli.process import ProcessManager
-from src.llama.models.pid_data import PidData
+from llama.services.guardian import GuardianService, GuardianConfig
+from llama.cli.process import ProcessManager
+from llama.models.pid_data import PidData
 
 
 class TestGuardianConfig(unittest.TestCase):

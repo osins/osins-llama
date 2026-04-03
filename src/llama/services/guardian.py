@@ -16,7 +16,7 @@ from ..cli.process import ProcessManager
 from ..cli.pid_file_manager import PidFileManager
 from ..models.pid_data import PidData
 from ..utils.pid_tools import is_process_running
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 class GuardianConfig:

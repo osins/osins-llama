@@ -9,19 +9,17 @@ from typing import Optional
 import json
 import asyncio
 
-from src.llama.api.open_ai.completion_routes import router as completion_router
-from src.llama.api.open_ai.chat_routes import router as chat_router
-from src.llama.api.open_ai.models_routes import router as models_router
-from src.llama.api.open_ai.embeddings_routes import router as embeddings_router
-from src.llama.api.llama_cpp.custom_routes import router as custom_router
-from src.llama.api.llama_cpp.llama_completion_routes import router as llama_completion_router
-from src.llama.core.model_manager import ModelManager
-from src.llama.config.config import Config
-from src.llama.exceptions.service_error import ServiceError
-from src.llama.middlewares.rate_limit_middleware import RateLimitMiddleware
-from src.llama.middlewares.api_key_middleware import ApiKeyMiddleware
-from src.llama.middlewares.logging_middleware import LoggingMiddleware
-from src.llama.core.logger_manager import logger
+from llama.api.open_ai.completion_routes import router as completion_router
+from llama.api.open_ai.chat_routes import router as chat_router
+from llama.api.open_ai.models_routes import router as models_router
+from llama.api.open_ai.embeddings_routes import router as embeddings_router
+from llama.core.model_manager import ModelManager
+from llama.config.config import Config
+from llama.exceptions.service_error import ServiceError
+from llama.middlewares.rate_limit_middleware import RateLimitMiddleware
+from llama.middlewares.api_key_middleware import ApiKeyMiddleware
+from llama.middlewares.logging_middleware import LoggingMiddleware
+from llama.core.logger_manager import logger
 
 
 def create_app(config: Config):
@@ -66,8 +64,6 @@ def create_app(config: Config):
     app.include_router(chat_router, tags=["chat"])  # Already prefixed with /v1 in routes file
     app.include_router(models_router, tags=["models"])  # Already prefixed with /v1 in routes file
     app.include_router(embeddings_router, tags=["embeddings"])  # Already prefixed with /v1 in routes file
-    app.include_router(custom_router)  # No prefix for custom endpoints like /props
-    app.include_router(llama_completion_router, tags=["llama.cpp"])  # llama.cpp compatible endpoint
 
     @app.get("/", include_in_schema=False)
     def read_root():
@@ -123,7 +119,7 @@ def start_server(config: Config):
     print(f"API documentation available at: http://{config.service.host}:{config.service.port}/docs")
 
     # Import and use the new logger manager
-    from src.llama.core.logger_manager import logger
+    from llama.core.logger_manager import logger
     # Set debug mode based on config
     if config.service.debug:
         logger.debug = lambda msg, *args, **kwargs: logger.logger.debug(msg, *args, **kwargs)

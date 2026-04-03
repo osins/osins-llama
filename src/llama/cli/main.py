@@ -11,7 +11,7 @@ from .logs import logs
 from .health import health
 from .context import CLIContext
 from ..utils.security_utils import validate_config_path
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 class CircularDependencyError(Exception):

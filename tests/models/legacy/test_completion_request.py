@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.legacy.completion_request import CompletionRequest
+from llama.models.legacy.completion_request import CompletionRequest
 
 
 class TestCompletionRequest:

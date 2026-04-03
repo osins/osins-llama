@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.common.error_response import ErrorResponse
-from src.llama.models.common.error_model import ErrorModel
+from llama.models.common.error_response import ErrorResponse
+from llama.models.common.error_model import ErrorModel
 
 
 class TestErrorResponse:

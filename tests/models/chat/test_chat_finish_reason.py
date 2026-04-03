@@ -1,5 +1,5 @@
 import pytest
-from src.llama.models.chat.chat_finish_reason import ChatFinishReason
+from llama.models.chat.chat_finish_reason import ChatFinishReason
 
 
 class TestChatFinishReason:

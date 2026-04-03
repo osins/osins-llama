@@ -25,7 +25,7 @@ async def list_models():
     """
     List all available models
     """
-    from src.llama.core.model_manager import ModelManager
+    from llama.core.model_manager import ModelManager
     
     model_manager = ModelManager.get_instance()
     model_path = model_manager.config.model.path
@@ -50,8 +50,8 @@ async def retrieve_model(model: str):
     """
     Retrieve a specific model
     """
-    from src.llama.core.model_manager import ModelManager
-    from src.llama.exceptions.service_error import ServiceError
+    from llama.core.model_manager import ModelManager
+    from llama.exceptions.service_error import ServiceError
     
     model_manager = ModelManager.get_instance()
     model_path = model_manager.config.model.path

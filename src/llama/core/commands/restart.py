@@ -7,7 +7,7 @@ import time
 import socket
 from pathlib import Path
 from typing import Optional
-from src.llama.core.logger_manager import logger
+from llama.core.logger_manager import logger
 
 
 def get_platform_lock(lock_file_path: Path, max_retries: int = 5, retry_delay: float = 0.1):

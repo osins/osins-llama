@@ -5,7 +5,7 @@ import socket
 from pathlib import Path
 
 from .pid_file_manager import PidFileManager
-from src.llama.core.logger_manager import LoggerManager, logger
+from llama.core.logger_manager import LoggerManager, logger
 
 
 def execute_status(debug: bool = False) -> int:
@@ -28,7 +28,7 @@ def execute_status(debug: bool = False) -> int:
     if debug:
         logger = LoggerManager(debug=True)
     else:
-        from src.llama.core.logger_manager import logger
+        from llama.core.logger_manager import logger
 
     try:
         # 使用 PidFileManager 读取 PID 数据

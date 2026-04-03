@@ -2,11 +2,11 @@
 综合安全和版本测试
 验证所有安全措施和版本跟踪功能
 """
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.common.usage import Usage
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.version_tracker import SchemaVersionTracker, register_model_for_version_tracking
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.common.usage import Usage
+from llama.models.chat.chat_role import ChatRole
+from llama.models.version_tracker import SchemaVersionTracker, register_model_for_version_tracking
 
 
 def test_comprehensive_security_and_versioning():
@@ -66,7 +66,7 @@ def test_comprehensive_security_and_versioning():
     print("\n5. 测试模型注册:")
     register_model_for_version_tracking(ChatMessage)
     register_model_for_version_tracking(ChatCompletionRequest)
-    from src.llama.models.version_tracker import MODEL_SCHEMA_HASHES
+    from llama.models.version_tracker import MODEL_SCHEMA_HASHES
     if len(MODEL_SCHEMA_HASHES) >= 2:
         print(f"   [PASS] 成功注册了 {len(MODEL_SCHEMA_HASHES)} 个模型")
     else:

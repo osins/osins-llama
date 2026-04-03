@@ -3,9 +3,9 @@
 import json
 import uuid
 from typing import List, Dict, Any, Optional, Callable
-from src.llama.models.chat.tool_call import ToolCall
-from src.llama.models.chat.tool_call_function import FunctionCall
-from src.llama.core.logger_manager import logger
+from llama.models.chat.tool_call import ToolCall
+from llama.models.chat.tool_call_function import FunctionCall
+from llama.core.logger_manager import logger
 
 
 class ToolService:

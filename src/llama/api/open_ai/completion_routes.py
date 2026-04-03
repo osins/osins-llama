@@ -10,18 +10,18 @@ import time
 import uuid
 import json
 
-from src.llama.models.legacy.completion_request import CompletionRequest
-from src.llama.models.legacy.completion_response import CompletionResponse
-from src.llama.models.common.stream_chunk import StreamChunk
-from src.llama.services.completion_service import CompletionService
-from src.llama.core.security import (
+from llama.models.legacy.completion_request import CompletionRequest
+from llama.models.legacy.completion_response import CompletionResponse
+from llama.models.common.stream_chunk import StreamChunk
+from llama.services.completion_service import CompletionService
+from llama.core.security import (
     verify_api_key,
     get_rate_limiter,
     get_concurrency_controller
 )
-from src.llama.utils.token_utils import count_tokens
-from src.llama.exceptions import ValidationError, RateLimitError, ServiceError, AuthenticationError
-from src.llama.core.logger_manager import logger
+from llama.utils.token_utils import count_tokens
+from llama.exceptions import ValidationError, RateLimitError, ServiceError, AuthenticationError
+from llama.core.logger_manager import logger
 
 router = APIRouter()
 

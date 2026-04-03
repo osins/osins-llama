@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.chat.chat_completion_delta import ChatCompletionDelta
-from src.llama.models.chat.chat_completion_tool_call_delta import ChatCompletionToolCallDelta
-from src.llama.models.chat.chat_completion_tool_call_delta_function import ChatCompletionToolCallDeltaFunction
-from src.llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_completion_delta import ChatCompletionDelta
+from llama.models.chat.chat_completion_tool_call_delta import ChatCompletionToolCallDelta
+from llama.models.chat.chat_completion_tool_call_delta_function import ChatCompletionToolCallDeltaFunction
+from llama.models.chat.chat_role import ChatRole
 
 
 class TestChatCompletionDelta:

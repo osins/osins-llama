@@ -8,14 +8,14 @@ from typing import Any, Dict, List
 import pytest
 from hypothesis import given, strategies as st, settings, HealthCheck
 
-from src.llama.models.chat.chat_message import ChatMessage
-from src.llama.models.chat.chat_completion_request import ChatCompletionRequest
-from src.llama.models.common.usage import Usage
-from src.llama.models.chat.chat_role import ChatRole
-from src.llama.models.chat.chat_content_part import ChatContentPart
-from src.llama.models.chat.content_type import ContentType
-from src.llama.models.chat.tool_call import ToolCall
-from src.llama.models.chat.tool_call_function import FunctionCall
+from llama.models.chat.chat_message import ChatMessage
+from llama.models.chat.chat_completion_request import ChatCompletionRequest
+from llama.models.common.usage import Usage
+from llama.models.chat.chat_role import ChatRole
+from llama.models.chat.chat_content_part import ChatContentPart
+from llama.models.chat.content_type import ContentType
+from llama.models.chat.tool_call import ToolCall
+from llama.models.chat.tool_call_function import FunctionCall
 
 
 # 定义用于测试的策略

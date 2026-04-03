@@ -3,11 +3,11 @@
 from fastapi import APIRouter, Request
 from typing import Union
 
-from src.llama.models.embeddings.embedding_request import EmbeddingRequest
-from src.llama.models.embeddings.embedding_response import EmbeddingResponse
-from src.llama.services.embedding_service import EmbeddingService
-from src.llama.exceptions import ServiceError
-from src.llama.core.logger_manager import logger
+from llama.models.embeddings.embedding_request import EmbeddingRequest
+from llama.models.embeddings.embedding_response import EmbeddingResponse
+from llama.services.embedding_service import EmbeddingService
+from llama.exceptions import ServiceError
+from llama.core.logger_manager import logger
 
 
 router = APIRouter()

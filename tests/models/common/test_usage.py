@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from src.llama.models.common.usage import Usage
+from llama.models.common.usage import Usage
 
 
 class TestUsage:
