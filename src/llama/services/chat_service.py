@@ -128,7 +128,7 @@ class ChatService:
                 # 构建模型调用参数字典
                 raw_kwargs = {
                     "prompt": formatted_messages,
-                    "max_tokens": request.max_tokens or 1000,
+                    "max_tokens": request.max_tokens or request.max_completion_tokens or 8192,
                     "temperature": request.temperature or 0.7,
                     "top_p": request.top_p or 1.0,
                     "stream": False,  # 非流式
@@ -137,10 +137,14 @@ class ChatService:
                     "frequency_penalty": request.frequency_penalty or 0.0
                 }
 
+                # 合并 extra_body 中的额外参数（如 top_k, min_p 等）
+                if request.extra_body:
+                    raw_kwargs.update(request.extra_body)
+
                 # 应用参数过滤
                 from llama.core.model_manager import filter_llama_params
                 model_kwargs = filter_llama_params(raw_kwargs)
-                
+
                 # 降低 temperature 以提高生成稳定性
                 if "temperature" not in model_kwargs or model_kwargs["temperature"] > 1.0:
                     model_kwargs["temperature"] = 1.0  # 从更高值降低到1.0
@@ -279,7 +283,7 @@ class ChatService:
                 # 构建模型调用参数字典
                 raw_kwargs = {
                     "prompt": formatted_messages,
-                    "max_tokens": request.max_tokens or 1000,
+                    "max_tokens": request.max_tokens or request.max_completion_tokens or 8192,
                     "temperature": request.temperature or 0.7,
                     "top_p": request.top_p or 1.0,
                     "stream": True,  # 流式
@@ -288,10 +292,14 @@ class ChatService:
                     "frequency_penalty": request.frequency_penalty or 0.0
                 }
 
+                # 合并 extra_body 中的额外参数（如 top_k, min_p 等）
+                if request.extra_body:
+                    raw_kwargs.update(request.extra_body)
+
                 # 应用参数过滤
                 from llama.core.model_manager import filter_llama_params
                 model_kwargs = filter_llama_params(raw_kwargs)
-                
+
                 # 降低 temperature 以提高生成稳定性
                 if "temperature" not in model_kwargs or model_kwargs["temperature"] > 1.0:
                     model_kwargs["temperature"] = 1.0  # 从更高值降低到1.0

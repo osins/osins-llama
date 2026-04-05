@@ -13,7 +13,7 @@ class ChatCompletionRequest(BaseDataModel):
     表示 ChatCompletion API 的请求对象，支持多 message、content parts、tool calls 等功能。
     严格遵循 OpenAI ChatCompletions API 规范。
     """
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="allow", frozen=True)
 
     messages: List[ChatMessage] = Field(..., min_length=1)
     model: str = Field(..., min_length=1, max_length=255)
@@ -28,7 +28,7 @@ class ChatCompletionRequest(BaseDataModel):
     stream: Optional[bool] = False
     stream_options: Optional[StreamOptions] = Field(default=None)
     temperature: Optional[float] = Field(default=1.0, ge=0.0, le=2.0)
-    top_p: Optional[float] = Field(default=1.0, ge=0.0, le=1.0)
+    top_p: Optional[float] = Field(default=0.95, ge=0.0, le=1.0)
     top_logprobs: Optional[int] = Field(default=None, ge=0, le=20)
     logprobs: Optional[bool] = Field(default=None)
     user: Optional[str] = Field(default=None, min_length=1, max_length=255)
@@ -41,6 +41,13 @@ class ChatCompletionRequest(BaseDataModel):
     service_tier: Optional[str] = Field(default=None)
     parallel_tool_calls: Optional[bool] = Field(default=None)
     response_format: Optional[Dict[str, Any]] = Field(default=None)
+    
+    # 扩展字段：支持 OpenAI 标准 API 之外的参数（如 top_k, min_p 等）
+    # 这些参数会被传递到底层 llama.cpp server
+    extra_body: Optional[Dict[str, Any]] = Field(
+        default=None, 
+        description="Extra parameters for llama.cpp server (e.g., top_k, min_p)"
+    )
 
     @field_validator('logit_bias', mode='before')
     @classmethod

@@ -25,12 +25,12 @@ from llama.core.logger_manager import logger
 
 router = APIRouter()
 
-MAX_CONTEXT_LENGTH: int = 2048
-DEFAULT_TEMPERATURE: float = 0.8
-DEFAULT_TOP_K: int = 40
+# 默认参数配置（与示例对齐）
+DEFAULT_TEMPERATURE: float = 1.0
+DEFAULT_TOP_K: int = 64
 DEFAULT_TOP_P: float = 0.95
-DEFAULT_MIN_P: float = 0.05
-DEFAULT_MAX_TOKENS: int = 16
+DEFAULT_MIN_P: float = 0.01
+DEFAULT_MAX_TOKENS: int = 8192
 DEFAULT_REPEAT_LAST_N: int = 64
 DEFAULT_REPEAT_PENALTY: float = 1.1
 SSE_HEADERS: Dict[str, str] = {
@@ -150,16 +150,19 @@ async def _validate_request(
 
     logger.info(f"Token validation: prompt tokens={total_prompt_tokens}, max_tokens={request.max_tokens}")
 
+    # 从配置读取最大上下文长度
+    max_context_length = service.model_manager.config.resources.max_total_tokens
+
     if request.max_tokens is not None:
         total_expected = total_prompt_tokens + request.max_tokens
-        if total_expected > MAX_CONTEXT_LENGTH:
+        if total_expected > max_context_length:
             logger.warning(f"Request exceeds maximum context length: prompt_tokens={total_prompt_tokens}, max_tokens={request.max_tokens}, total={total_expected}")
             raise ValidationError(
                 f"Request exceeds maximum context length. "
                 f"Prompt tokens: {total_prompt_tokens}, "
                 f"Max tokens: {request.max_tokens}, "
                 f"Total: {total_expected}. "
-                f"Maximum allowed: {MAX_CONTEXT_LENGTH}"
+                f"Maximum allowed: {max_context_length}"
             )
 
     logger.info(f"All validations passed for model: {request.model}")

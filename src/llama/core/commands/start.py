@@ -34,8 +34,8 @@ def start(port, host, model, n_ctx, n_threads, api_keys):
                 'verbose': False
             },
             'resources': {
-                'max_prompt_tokens': 2048,
-                'max_total_tokens': 4096,
+                'max_prompt_tokens': 16384,
+                'max_total_tokens': 32768,
                 'max_batch_size': 1
             },
             'security': {
@@ -94,8 +94,8 @@ def start(port, host, model, n_ctx, n_threads, api_keys):
                 'verbose': False
             },
             'resources': {
-                'max_prompt_tokens': 2048,
-                'max_total_tokens': 4096,
+                'max_prompt_tokens': 16384,
+                'max_total_tokens': 32768,
                 'max_batch_size': 1
             },
             'security': {

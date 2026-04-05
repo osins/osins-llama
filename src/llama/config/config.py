@@ -51,7 +51,7 @@ class Config(BaseModel):
         return cls(
             model=ModelConfig(
                 path=model_path,
-                n_ctx=max(1, min(int(os.getenv("LLAMA_N_CTX", "8192")), 100000)),
+                n_ctx=max(1, min(int(os.getenv("LLAMA_N_CTX", "32768")), 100000)),
                 n_threads=max(1, min(int(os.getenv("LLAMA_N_THREADS", "10")), 64)),
                 n_gpu_layers=max(-1, min(int(os.getenv("LLAMA_N_GPU_LAYERS", "16")), 200)),
                 n_batch=max(1, min(int(os.getenv("LLAMA_N_BATCH", "1024")), 4096)),
@@ -63,8 +63,8 @@ class Config(BaseModel):
                 chat_template=os.getenv("LLAMA_CHAT_TEMPLATE", None)
             ),
             resources=ResourcesConfig(
-                max_prompt_tokens=max(1, min(int(os.getenv("LLAMA_MAX_PROMPT_TOKENS", "2048")), 100000)),
-                max_total_tokens=max(1, min(int(os.getenv("LLAMA_MAX_TOTAL_TOKENS", "4096")), 200000)),
+                max_prompt_tokens=max(1, min(int(os.getenv("LLAMA_MAX_PROMPT_TOKENS", "16384")), 100000)),
+                max_total_tokens=max(1, min(int(os.getenv("LLAMA_MAX_TOTAL_TOKENS", "32768")), 200000)),
                 max_batch_size=max(1, min(int(os.getenv("LLAMA_MAX_BATCH_SIZE", "1")), 100))
             ),
             security=SecurityConfig(

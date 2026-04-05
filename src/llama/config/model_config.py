@@ -4,7 +4,7 @@ from pydantic import BaseModel, field_validator
 
 class ModelConfig(BaseModel):
     path: Optional[str] = ""  # 使模型路径可选
-    n_ctx: int = 8192
+    n_ctx: int = 32768
     n_threads: int = 10
     n_gpu_layers: int = 16
     n_batch: int = 1024

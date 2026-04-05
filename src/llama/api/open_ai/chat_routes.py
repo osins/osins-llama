@@ -74,16 +74,19 @@ async def create_chat_completion(
 
         total_message_tokens = count_tokens_in_messages(request.messages)
 
-        max_tokens = request.max_tokens or 1000
+        max_tokens = request.max_tokens or request.max_completion_tokens or 8192
         total_expected_tokens = total_message_tokens + max_tokens
 
-        if total_expected_tokens > 2048:
+        # 从配置读取最大上下文长度
+        max_context_length = service.model_manager.config.resources.max_total_tokens
+
+        if total_expected_tokens > max_context_length:
             raise ValidationError(
                 f"Request exceeds maximum context length. "
                 f"Message tokens: {total_message_tokens}, "
                 f"Max tokens: {max_tokens}, "
                 f"Total: {total_expected_tokens}. "
-                f"Maximum allowed: 2048"
+                f"Maximum allowed: {max_context_length}"
             )
 
         if request.stream:
